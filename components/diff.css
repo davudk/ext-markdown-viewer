@@ -308,7 +308,10 @@
   overflow-wrap: anywhere;
 }
 
-.mdv-diff-cell[data-side='before'] {
+/* The rule down the middle of a split view. Scoped to that layout: a unified
+   diff draws context against the *new* file's numbers, so half its rows would
+   otherwise carry a border and half would not. */
+.mdv-diff-table[data-layout='split'] .mdv-diff-cell[data-side='before'] {
   border-right: 1px solid var(--mdv-border);
 }
 

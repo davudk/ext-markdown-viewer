@@ -223,8 +223,11 @@
 .mdv-find-caret {
   flex: none;
   color: var(--mdv-fg-muted);
-  transform: rotate(var(--mdv-caret, 0deg));
   transition: transform var(--mdv-dur) ease;
+}
+
+.mdv-find-caret[data-open] {
+  transform: rotate(90deg);
 }
 
 .mdv-find-file-name {

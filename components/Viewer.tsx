@@ -7,11 +7,13 @@ import {
   VIEWER_CSS_VARS,
 } from '@/lib/config';
 import { useKeyboardShortcuts, useLiveReload, useScrollMemory } from '@/lib/hooks';
+import type { CompareRequest } from '@/lib/diff';
 import { renderMarkdown } from '@/lib/markdown';
 import { onSettingsChanged, saveSettings, type Settings } from '@/lib/settings';
 import { applyDocumentTheme, loadDocumentTheme } from '@/lib/theme-presets';
 
 import { CommandPalette } from './CommandPalette';
+import { Diff } from './Diff';
 import { Document } from './Document';
 import { ExportMenu } from './ExportMenu';
 import type { OpenedDocument } from './FolderBrowser';
@@ -54,6 +56,9 @@ export function Viewer({
 
   /** The page's own document, kept in state so live reload can replace it. */
   const [pageSource, setPageSource] = useState(initialSource);
+
+  /** Both phases of compare — the row menu and the overlay — hang off this. */
+  const [compare, setCompare] = useState<CompareRequest | null>(null);
 
   const source = opened?.source ?? pageSource;
   const url = opened?.url ?? location.href;
@@ -129,6 +134,7 @@ export function Viewer({
           documentUrl={url}
           source={source}
           onOpenDocument={setOpened}
+          onCompare={setCompare}
         />
       ) : null}
 
@@ -177,6 +183,13 @@ export function Viewer({
         onToggleRaw={() => setShowRaw((raw) => !raw)}
       />
 
+      <Diff
+        request={compare}
+        currentName={opened?.name ?? documentName(url)}
+        currentSource={source}
+        onClose={() => setCompare(null)}
+      />
+
       <Presentation
         html={doc.html}
         split={settings.slideSplit}
@@ -184,6 +197,16 @@ export function Viewer({
       />
     </div>
   );
+}
+
+/** Last path segment, for naming the document on screen in the diff header. */
+function documentName(rawUrl: string): string {
+  try {
+    const segments = new URL(rawUrl).pathname.split('/').filter(Boolean);
+    return decodeURIComponent(segments[segments.length - 1] ?? '') || 'this document';
+  } catch {
+    return 'this document';
+  }
 }
 
 /** Steps through the theme options in the order the settings page presents them. */

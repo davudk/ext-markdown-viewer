@@ -293,9 +293,11 @@ function viewer(drawing: SVGSVGElement): HTMLElement {
     'Diagram. Arrow keys pan, plus and minus zoom, 0 resets.',
   );
 
-  // Mermaid caps the drawing at its measured width, which fights the stage.
-  drawing.removeAttribute('width');
-  drawing.removeAttribute('height');
+  // Mermaid caps the drawing at its measured width with an inline style, which
+  // no stylesheet can outrank and which stops the stage from filling. The
+  // `width`/`height` *attributes* deliberately stay: CSS overrides them here,
+  // and they are the intrinsic size everything outside this add-on falls back
+  // to — presentation mode among them.
   drawing.style.removeProperty('max-width');
 
   drawing.append(viewport(drawing));
@@ -330,7 +332,9 @@ function viewport(drawing: SVGSVGElement): SVGGElement {
     group.append(child);
   }
 
-  group.append(hitArea(drawing));
+  // Behind the drawing, not over it: on top it would swallow every pointer
+  // event the diagram's own shapes should get, text selection included.
+  group.prepend(hitArea(drawing));
   return group;
 }
 

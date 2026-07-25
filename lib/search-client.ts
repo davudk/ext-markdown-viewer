@@ -85,7 +85,21 @@ export function isFailure(value: SearchAnswer): value is SearchFailure {
 interface Pending {
   resolve: (value: SearchAnswer) => void;
   timer: ReturnType<typeof setTimeout>;
+  /** Kept so a worker that never ran can have its work redone on this thread. */
+  message: WorkerRequest;
 }
+
+/**
+ * Why a worker is being written off, and it decides what happens to the work it
+ * was holding.
+ *
+ * `dead` is a script that never ran — the `file://` case — so the queries in
+ * flight were never started and can simply be redone here. `wedged` is a thread
+ * that ran and stopped answering, which for this feature means one thing: a
+ * catastrophic pattern. Redoing *that* on the main thread would freeze the tab,
+ * which is the failure the worker existed to prevent, so it is reported instead.
+ */
+type Demotion = 'dead' | 'wedged';
 
 /* -------------------------------------------------------------------------- */
 /* The client                                                                  */
@@ -133,8 +147,8 @@ export class SearchClient {
       worker.onmessage = (event: MessageEvent<WorkerResponse>) => this.settle(event.data);
       // A script that fails to load asynchronously — the `file://` case, among
       // others — arrives here rather than at the constructor.
-      worker.onerror = () => this.demote();
-      worker.onmessageerror = () => this.demote();
+      worker.onerror = () => this.demote('dead');
+      worker.onmessageerror = () => this.demote('dead');
 
       this.worker = worker;
       this.transport = 'worker';
@@ -154,8 +168,8 @@ export class SearchClient {
     }
   }
 
-  /** Kills the worker and fails everything waiting on it. */
-  private demote() {
+  /** Kills the worker and settles everything that was waiting on it. */
+  private demote(why: Demotion) {
     this.worker?.terminate();
     this.worker = null;
     this.transport = 'main';
@@ -166,11 +180,24 @@ export class SearchClient {
       handleRequest({ kind: 'put', key, text }, this.local);
     }
 
-    for (const [, pending] of this.pending) {
-      clearTimeout(pending.timer);
-      pending.resolve({ reason: 'timeout' });
-    }
+    const waiting = [...this.pending.values()];
     this.pending.clear();
+
+    for (const pending of waiting) {
+      clearTimeout(pending.timer);
+      if (why === 'wedged') {
+        pending.resolve({ reason: 'timeout' });
+        continue;
+      }
+
+      // The worker never ran, so this query never started. Redoing it here is
+      // the difference between "search does not work on local files" and "search
+      // is a little slower on local files".
+      const answer = handleRequest(pending.message, this.local);
+      pending.resolve(
+        answer && answer.kind !== 'pong' ? answer : { reason: 'aborted' },
+      );
+    }
   }
 
   private settle(response: WorkerResponse) {
@@ -247,11 +274,12 @@ export class SearchClient {
         // Nothing came back in time. The thread is assumed wedged on a
         // catastrophic pattern — the one failure a clock inside the worker
         // cannot catch — so it is killed rather than waited on.
-        this.demote();
+        this.demote('wedged');
       }, SEARCH_WORKER_TIMEOUT_MS);
 
       this.pending.set(ticket, {
         timer,
+        message,
         resolve: (value) => {
           request.signal?.removeEventListener('abort', onAbort);
           // Restore the caller's run id: the ticket is this class's bookkeeping

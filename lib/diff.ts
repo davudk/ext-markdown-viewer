@@ -17,7 +17,11 @@
  * which is why the tests can drive it without one.
  */
 
-import hljs from 'highlight.js';
+// The ~40-language common bundle, not the full build. The diff highlights
+// markdown and nothing else, and the full build carries ~190 grammars —
+// importing it here put roughly 700kB back into the base bundle that the
+// add-on split had just taken out.
+import hljs from 'highlight.js/lib/common';
 
 import {
   ADDON_READY_TIMEOUT_MS,

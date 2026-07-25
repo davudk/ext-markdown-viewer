@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 
@@ -339,10 +338,12 @@ export function SearchPanel({
     void (async () => {
       const collected: FileResult[] = [];
       let total = 0;
+      let flushed = false;
 
       /** Renders what has been found so far. Streaming is the point. */
       const flush = () => {
         if (runId === runRef.current) setResults([...collected]);
+        flushed = true;
       };
 
       const take = (
@@ -370,6 +371,12 @@ export function SearchPanel({
             timedOut: answer.timedOut,
           });
           total += answer.matches.length;
+          flush();
+        } else if (!flushed) {
+          // The first answer of a run always renders, even when it is empty: the
+          // flush is what clears the *previous* query's rows, and a query going
+          // from five results to none would otherwise leave all five on screen.
+          // After that, a file with nothing in it is not worth a render.
           flush();
         }
 
@@ -894,7 +901,6 @@ function Caret({ open }: { open: boolean }) {
       height="12"
       aria-hidden="true"
       focusable="false"
-      style={{ '--mdv-caret': open ? '90deg' : '0deg' } as CSSProperties}
     >
       <path
         d="M6 3.5 10.5 8 6 12.5"

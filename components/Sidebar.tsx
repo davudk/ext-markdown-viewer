@@ -18,6 +18,8 @@ import { isFolderBrowserSupported } from '@/lib/folder';
 import type { Heading } from '@/lib/markdown';
 import { loadSidebarTab, saveSidebarTab } from '@/lib/settings';
 
+import type { CompareRequest } from '@/lib/diff';
+
 import { FolderBrowser, type FolderStatus, type OpenedDocument } from './FolderBrowser';
 import { SearchPanel } from './SearchPanel';
 import { Toc } from './Toc';
@@ -39,6 +41,12 @@ export interface SidebarProps {
   source: string;
   /** A file was opened through a handle and the shell should render it instead. */
   onOpenDocument: (document: OpenedDocument) => void;
+  /**
+   * Compare a file in the tree with the one on screen. Optional on purpose:
+   * without it `FolderBrowser` leaves the browser's own context menu alone
+   * rather than claiming right-click for a menu whose action goes nowhere.
+   */
+  onCompare?: (request: CompareRequest) => void;
 }
 
 /** What the tab strip needs to know to say whether a tab is worth opening. */
@@ -97,6 +105,7 @@ const PANELS: Record<SidebarTabId, PanelDefinition> = {
         source={props.source}
         visible={visible}
         onOpen={props.onOpenDocument}
+        onCompare={props.onCompare}
         onStatusChange={context.setFolder}
       />
     ),
@@ -140,11 +149,17 @@ const PANELS: Record<SidebarTabId, PanelDefinition> = {
  * may be a direct child of `.mdv` — which is why the tabs live inside this
  * element rather than each panel bringing its own landmark.
  *
- * Both panels stay mounted while the other is showing, hidden rather than
+ * Every panel stays mounted while another is showing, hidden rather than
  * unmounted. That is not a micro-optimisation: the outline's scroll-spy has to
- * keep tracking so switching back shows where the reader is *now*, and the
- * folder tree has to keep its opened directories and its permission grant, both
- * of which cost a click to rebuild.
+ * keep tracking so switching back shows where the reader is *now*, the folder
+ * tree has to keep its opened directories and its permission grant, and Search
+ * has to keep the query and the results that go with it — all of which cost a
+ * click, or a folder-wide sweep, to rebuild.
+ *
+ * The sidebar is also where a tab's keyboard shortcut is honoured, which means
+ * ctrl/cmd+shift+F only reaches Search while the sidebar exists. With "show
+ * sidebar" off there is nothing to open, and quick find — which is a fixed
+ * overlay and not part of this tree — is what remains.
  */
 export function Sidebar(props: SidebarProps) {
   const [expanded, setExpanded] = useState(startsExpanded);
