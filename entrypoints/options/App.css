@@ -1,0 +1,565 @@
+/*
+ * Light is the base. Dark is applied twice: once for `auto` following the OS,
+ * and once for an explicit `dark` choice. The OS rule deliberately excludes
+ * `data-theme='light'` so an explicit light choice survives a dark system.
+ *
+ * Same palette as the popup, plus a page/card split — a settings screen needs
+ * cards to sit above their background, which inverts between the two themes.
+ */
+
+:root {
+  color-scheme: light;
+
+  --page: #f4f5f7;
+  --card: #ffffff;
+  --surface: #f6f7f9;
+  --fg: #16191d;
+  --muted: #5c636e;
+  --line: #e3e6ea;
+  --line-strong: #cfd4db;
+  --accent: #2f6df6;
+  --accent-hover: #2258d8;
+  --accent-fg: #ffffff;
+  --ok: #10693c;
+  --err: #a5261f;
+  --code-bg: #eef0f3;
+  --thumb: #ffffff;
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+
+    --page: #101216;
+    --card: #1a1d22;
+    --surface: #21252b;
+    --fg: #e8eaed;
+    --muted: #a2a9b4;
+    --line: #2b2f36;
+    --line-strong: #3a4048;
+    --accent: #5b8dff;
+    --accent-hover: #7aa2ff;
+    --accent-fg: #0e1116;
+    --ok: #63d296;
+    --err: #ff8f85;
+    --code-bg: #23272d;
+    --thumb: #f3f5f8;
+    --shadow: none;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --page: #101216;
+  --card: #1a1d22;
+  --surface: #21252b;
+  --fg: #e8eaed;
+  --muted: #a2a9b4;
+  --line: #2b2f36;
+  --line-strong: #3a4048;
+  --accent: #5b8dff;
+  --accent-hover: #7aa2ff;
+  --accent-fg: #0e1116;
+  --ok: #63d296;
+  --err: #ff8f85;
+  --code-bg: #23272d;
+  --thumb: #f3f5f8;
+  --shadow: none;
+}
+
+body {
+  background: var(--page);
+  color: var(--fg);
+}
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 40px 24px 72px;
+}
+
+/* Masthead ----------------------------------------------------------------- */
+
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.masthead h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.masthead-sub {
+  margin: 1px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mark {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  color: var(--accent);
+}
+
+.icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  vertical-align: -2px;
+}
+
+/* Cards -------------------------------------------------------------------- */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.card + .card {
+  margin-top: 20px;
+}
+
+.card-head {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.card-head h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Rows --------------------------------------------------------------------- */
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 20px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--line);
+}
+
+.row-stack {
+  display: block;
+}
+
+/* Holds only a live region: no padding until it actually says something. */
+.row-quiet {
+  padding: 0 20px;
+}
+
+.row-quiet .msg:not(:empty) {
+  padding: 12px 0 16px;
+}
+
+.row-text {
+  min-width: 0;
+}
+
+.row-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.row-title-ok .icon {
+  color: var(--ok);
+}
+
+.row-desc {
+  margin: 7px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.row-desc p {
+  margin: 0 0 9px;
+}
+
+.row-desc p:last-child {
+  margin-bottom: 0;
+}
+
+.version {
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+/* Buttons ------------------------------------------------------------------ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.btn-quiet {
+  background: var(--card);
+  color: var(--fg);
+  border-color: var(--line-strong);
+}
+
+.btn-quiet:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.btn-icon {
+  flex: none;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: var(--card);
+  color: var(--fg);
+  border-color: var(--line-strong);
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: var(--surface);
+}
+
+.btn-inline {
+  flex: none;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.actions {
+  margin-top: 14px;
+}
+
+/* Switch ------------------------------------------------------------------- */
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 46px;
+  height: 27px;
+  margin-top: 2px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.switch[aria-checked='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.switch:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
+.switch[aria-checked='true']:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.switch:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: var(--thumb);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.28);
+  transition: transform 140ms ease;
+}
+
+.switch[aria-checked='true'] .switch-thumb {
+  transform: translateX(19px);
+}
+
+/* Stands in for the switch until the real permission state has been read. */
+.pill {
+  flex: none;
+  margin-top: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Sites -------------------------------------------------------------------- */
+
+.sites {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.site {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  background: var(--card);
+}
+
+.site + .site {
+  border-top: 1px solid var(--line);
+}
+
+.site-name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  margin: 14px 0 0;
+  padding: 16px 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  text-align: center;
+}
+
+.note {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* file:// onboarding -------------------------------------------------------- */
+
+.steps {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.steps li + li {
+  margin-top: 10px;
+}
+
+.path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 460px;
+  margin-top: 7px;
+}
+
+.path code {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  overflow-wrap: anywhere;
+}
+
+/* Facts -------------------------------------------------------------------- */
+
+.facts {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+/* Messages ----------------------------------------------------------------- */
+
+.msg {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.row-stack .msg:not(:empty) {
+  margin-top: 14px;
+}
+
+.msg.is-ok {
+  color: var(--ok);
+}
+
+.msg.is-err {
+  color: var(--err);
+}
+
+.msg.is-info {
+  color: var(--muted);
+}
+
+/* Loading ------------------------------------------------------------------ */
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 4px 0;
+}
+
+.bar {
+  height: 11px;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.bar-a {
+  width: 62%;
+}
+
+.bar-b {
+  width: 38%;
+}
+
+/* Theme picker ------------------------------------------------------------- */
+
+.segmented {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  margin-top: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.segment {
+  position: relative;
+  display: inline-flex;
+}
+
+.segment input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.segment span {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--muted);
+}
+
+.segment:hover span {
+  color: var(--fg);
+}
+
+.segment.is-on span {
+  background: var(--card);
+  color: var(--fg);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+
+.segment input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Narrow windows ----------------------------------------------------------- */
+
+@media (max-width: 560px) {
+  .page {
+    padding: 24px 16px 48px;
+  }
+
+  .row {
+    flex-direction: column;
+    gap: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

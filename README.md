@@ -65,14 +65,21 @@ This one declares no host permissions at all. Instead:
 | --- | --- | --- | --- |
 | Render this page | Opening the popup and clicking | `activeTab` | None |
 | Always on this site | Explicit opt-in per origin | `permissions.request()` → `scripting.registerContentScripts()` | Chrome's standard grant dialog |
+| Render everywhere | Opt-in on the settings page | `permissions.request({origins: ['*://*/*']})` | Chrome's all-sites grant dialog |
 
-Tier 1 covers the common case with no dialog whatsoever. Tier 2 exists only for
-people who want a site to render automatically on future visits, and it can be
-revoked from the same popup.
+Tier 1 covers the common case with no dialog whatsoever. Tier 2 exists for
+people who want one site to render automatically on future visits. Tier 3 is the
+"render markdown automatically on every site" setting — it is off by default,
+and turning it on shows Chrome's all-sites permission dialog, because that
+permission is what automatic rendering actually is. Every tier is revocable from
+the settings page, and revoking is never harder than granting.
 
 The service worker never tracks what it registered. It derives registrations
 entirely from `chrome.permissions.getAll()`, so granted state and registered
-state cannot drift, and revoking an origin genuinely stops the injection.
+state cannot drift, and revoking an origin genuinely stops the injection. The
+automatic-rendering switch is derived the same way — it reflects
+`permissions.contains()` rather than a stored boolean, so it cannot claim access
+the browser has taken away.
 
 ### Local files are different
 
@@ -109,8 +116,10 @@ DOMPurify compares against them as string constants and never requests them.
 entrypoints/background.ts    service worker: permissions → script registration
 entrypoints/renderer.tsx     the page takeover, injected dynamically
 entrypoints/viewer.css       document styles, light + dark
-entrypoints/popup/           toolbar popup: permissions and theme
+entrypoints/popup/           toolbar popup: per-page actions and theme
+entrypoints/options/         settings page: automatic rendering, granted sites
 lib/detect.ts                activation rules
+lib/permissions.ts           permission state, origin expansion
 lib/markdown.ts              marked + highlight.js + DOMPurify
 lib/settings.ts              chrome.storage.local
 lib/messages.ts              popup ↔ service worker contract

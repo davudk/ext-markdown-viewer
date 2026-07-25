@@ -7,6 +7,11 @@ import {
   type SyncResult,
 } from '@/lib/messages';
 import {
+  hasFileAccess,
+  isAutoRenderEnabled,
+  revokeOrigin,
+} from '@/lib/permissions';
+import {
   DEFAULT_SETTINGS,
   loadSettings,
   saveSettings,
@@ -32,9 +37,19 @@ type Target =
   /** A markdown file on disk — governed by the browser-level file toggle. */
   | { kind: 'file'; tabId: number; name: string };
 
+/**
+ * Whether the tab in front of us has already been taken over by the renderer.
+ * `unknown` is a real answer and is treated as one: the popup under-claims
+ * rather than announcing a success it can't see.
+ */
+type RenderState = 'rendered' | 'raw' | 'unknown';
+
 type Notice = { tone: 'ok' | 'error'; text: string };
 
 type Busy = 'render' | 'grant' | 'revoke' | null;
+
+/** The renderer's mount point (see `ROOT_ID` in entrypoints/renderer.tsx). */
+const ROOT_ID = 'mdv-root';
 
 /** Pages no extension can touch, so the popup explains rather than offers. */
 const RESTRICTED_SCHEMES = [
@@ -55,15 +70,6 @@ function describeError(error: unknown): string {
   return text || 'Something went wrong.';
 }
 
-/** Optional across browsers and versions, so the call itself has to be guarded. */
-async function hasFileAccess(): Promise<boolean> {
-  try {
-    return (await chrome.extension?.isAllowedFileSchemeAccess?.()) ?? false;
-  } catch {
-    return false;
-  }
-}
-
 /** Last path segment of a file:// URL, for naming the document the user opened. */
 function fileName(url: URL): string {
   const segments = url.pathname.split('/').filter(Boolean);
@@ -80,12 +86,53 @@ function pageLabel(url: URL): string {
   return url.protocol === 'file:' ? fileName(url) : url.hostname;
 }
 
-async function resolveTarget(): Promise<{
+/**
+ * Ask the tab itself whether the renderer already claimed it. This is what
+ * keeps the automatic-rendering copy honest: the permission can be granted
+ * while a tab opened before the grant still shows raw text, and the popup has
+ * no business claiming otherwise.
+ *
+ * `executeScript` here rides on activeTab, which opening the popup grants.
+ * A still-loading tab is reported as `unknown` rather than `raw`, because the
+ * renderer mounts on DOMContentLoaded and racing it would produce a confident
+ * wrong answer.
+ */
+async function detectRenderState(
+  tabId: number,
+  status: string | undefined,
+): Promise<RenderState> {
+  if (status !== 'complete') return 'unknown';
+
+  try {
+    const [frame] = await chrome.scripting.executeScript({
+      target: { tabId },
+      // Serialized and run in the page, so it may not close over anything.
+      func: () => document.getElementById('mdv-root') !== null,
+    });
+    if (typeof frame?.result !== 'boolean') return 'unknown';
+    return frame.result ? 'rendered' : 'raw';
+  } catch {
+    return 'unknown';
+  }
+}
+
+interface Resolved {
   target: Target;
+  /** This one site renders automatically. Only meaningful when `!autoRender`. */
   granted: boolean;
   fileAccess: boolean;
-}> {
-  const idle = { granted: false, fileAccess: false };
+  /** The all-sites grant: "render markdown automatically on every site". */
+  autoRender: boolean;
+  renderState: RenderState;
+}
+
+async function resolveTarget(): Promise<Resolved> {
+  const idle = {
+    granted: false,
+    fileAccess: false,
+    autoRender: false,
+    renderState: 'unknown' as const,
+  };
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id || !tab.url) return { target: { kind: 'unknown' }, ...idle };
@@ -106,10 +153,12 @@ async function resolveTarget(): Promise<{
   }
 
   if (url.protocol === 'file:') {
+    // The all-sites grant is `*://*/*`, which does not cover file://; local
+    // files are governed by the browser toggle alone, so it isn't consulted.
     const fileAccess = await hasFileAccess();
     return {
+      ...idle,
       target: { kind: 'file', tabId: tab.id, name: fileName(url) },
-      granted: false,
       fileAccess,
     };
   }
@@ -119,18 +168,30 @@ async function resolveTarget(): Promise<{
     return { target: { kind: 'plain', label: pageLabel(url) }, ...idle };
   }
 
-  let granted = false;
-  try {
-    granted = await chrome.permissions.contains({ origins: [pattern] });
-  } catch {
-    // Treat an unreadable permission state as "not granted": the worst case is
-    // offering a grant the user already has, which Chrome resolves instantly.
+  // Read fresh on every open: the options page is one tab away and can change
+  // this out from under us, so nothing here is cached between popup sessions.
+  const autoRender = await isAutoRenderEnabled();
+
+  let granted = autoRender;
+  if (!autoRender) {
+    try {
+      granted = await chrome.permissions.contains({ origins: [pattern] });
+    } catch {
+      // Treat an unreadable permission state as "not granted": the worst case
+      // is offering a grant the user already has, which Chrome resolves
+      // instantly.
+      granted = false;
+    }
   }
 
   return {
     target: { kind: 'web', tabId: tab.id, host: url.hostname, pattern },
     granted,
     fileAccess: false,
+    autoRender,
+    renderState: autoRender
+      ? await detectRenderState(tab.id, tab.status)
+      : 'unknown',
   };
 }
 
@@ -149,25 +210,31 @@ function CheckIcon() {
   );
 }
 
-function CopyIcon() {
+function SettingsIcon() {
   return (
     <svg className="icon" viewBox="0 0 16 16" aria-hidden="true">
-      <rect
-        x="5.75"
-        y="5.75"
-        width="8.5"
-        height="8.5"
-        rx="1.75"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
       <path
-        d="M10.25 3.5A1.75 1.75 0 008.5 1.75h-4.75A1.75 1.75 0 002 3.5v4.75c0 .97.78 1.75 1.75 1.75"
+        d="M2 5h7.3M13.2 5H14M2 11h1.5M7.5 11H14"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.4"
         strokeLinecap="round"
+      />
+      <circle
+        cx="11.25"
+        cy="5"
+        r="1.9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <circle
+        cx="5.5"
+        cy="11"
+        r="1.9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
       />
     </svg>
   );
@@ -251,9 +318,10 @@ function App() {
   const [target, setTarget] = useState<Target>({ kind: 'loading' });
   const [granted, setGranted] = useState(false);
   const [fileAccess, setFileAccess] = useState(false);
+  const [autoRender, setAutoRender] = useState(false);
+  const [renderState, setRenderState] = useState<RenderState>('unknown');
   const [busy, setBusy] = useState<Busy>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [copied, setCopied] = useState(false);
   const [theme, setTheme] = useState<Theme>(DEFAULT_SETTINGS.theme);
 
   const detect = useCallback(async () => {
@@ -262,6 +330,8 @@ function App() {
       setTarget(next.target);
       setGranted(next.granted);
       setFileAccess(next.fileAccess);
+      setAutoRender(next.autoRender);
+      setRenderState(next.renderState);
 
       // The file toggle lives outside the extension, so a sync here is what
       // picks it up after the user flips it and comes back.
@@ -293,6 +363,25 @@ function App() {
     void saveSettings({ theme: next }).catch(() => undefined);
   };
 
+  /**
+   * The options page owns everything the popup deliberately doesn't repeat:
+   * the automatic-rendering switch, the list of granted sites, and the full
+   * file:// instructions.
+   */
+  const openSettings = useCallback(() => {
+    setNotice(null);
+    try {
+      const opening = chrome.runtime.openOptionsPage?.();
+      // Chrome resolves this even when it can't open the page in older
+      // versions, so failures surface through the rejection path only.
+      void opening?.catch?.(() =>
+        setNotice({ tone: 'error', text: "Couldn't open settings." }),
+      );
+    } catch {
+      setNotice({ tone: 'error', text: "Couldn't open settings." });
+    }
+  }, []);
+
   /** Tier 1: inject via the activeTab grant. Never shows a permission prompt. */
   const render = useCallback(
     async (tabId: number, quiet = false): Promise<boolean> => {
@@ -302,6 +391,7 @@ function App() {
           tabId,
         });
         if (result?.ok) {
+          setRenderState('rendered');
           setNotice({ tone: 'ok', text: 'Rendered this page.' });
           return true;
         }
@@ -363,8 +453,7 @@ function App() {
     setNotice(null);
     setBusy('revoke');
 
-    chrome.permissions
-      .remove({ origins: [pattern] })
+    revokeOrigin(pattern)
       .then(async (removed) => {
         if (!removed) {
           setNotice({ tone: 'error', text: `Couldn't remove access to ${host}.` });
@@ -380,26 +469,20 @@ function App() {
       .finally(() => setBusy(null));
   };
 
-  const detailsUrl = `chrome://extensions/?id=${chrome.runtime.id}`;
-
-  const copyDetailsUrl = async () => {
-    try {
-      await navigator.clipboard.writeText(detailsUrl);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setNotice({
-        tone: 'error',
-        text: 'Copying failed — select the address above and copy it manually.',
-      });
-    }
-  };
-
   return (
     <div className="popup">
       <header className="head">
         <MarkIcon />
         <h1>Markdown Viewer</h1>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={openSettings}
+          title="Settings"
+          aria-label="Settings"
+        >
+          <SettingsIcon />
+        </button>
       </header>
 
       <main className="body">
@@ -440,38 +523,31 @@ function App() {
           <>
             <p className="lede">
               This is a local file. Chrome keeps local files off-limits to
-              extensions until you allow it — and only you can turn that on.
+              extensions until you allow it — a browser switch only you can
+              flip.
             </p>
-            <ol className="steps">
-              <li>
-                Paste this into the address bar (Chrome blocks links to it):
-                <span className="path">
-                  <code>{detailsUrl}</code>
-                  <button
-                    type="button"
-                    className="btn btn-icon"
-                    onClick={copyDetailsUrl}
-                  >
-                    <CopyIcon />
-                    {copied ? 'Copied' : 'Copy'}
-                  </button>
-                </span>
-              </li>
-              <li>
-                Turn on <strong>Allow access to file URLs</strong>.
-              </li>
-              <li>Come back here and reload the file.</li>
-            </ol>
-            <button
-              type="button"
-              className="btn btn-quiet"
-              onClick={() => {
-                setNotice(null);
-                void detect();
-              }}
-            >
-              Check again
-            </button>
+            <p className="sub">
+              Settings has the three steps, and a link you can paste.
+            </p>
+            <div className="actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={openSettings}
+              >
+                Open settings
+              </button>
+              <button
+                type="button"
+                className="btn btn-quiet"
+                onClick={() => {
+                  setNotice(null);
+                  void detect();
+                }}
+              >
+                Check again
+              </button>
+            </div>
           </>
         )}
 
@@ -496,7 +572,53 @@ function App() {
           </>
         )}
 
-        {target.kind === 'web' && (
+        {/*
+          Automatic rendering is on, so the buttons below would be busywork:
+          this page rendered itself, and a per-site grant adds nothing to an
+          all-sites one. The exception is a tab that was already open when the
+          setting was turned on — that one still shows raw text, and saying
+          otherwise would be a lie the user can see through.
+        */}
+        {target.kind === 'web' && autoRender && (
+          <>
+            {renderState === 'rendered' ? (
+              <>
+                <p className="lede state-ok">
+                  <CheckIcon />
+                  Rendered automatically.
+                </p>
+                <p className="sub">
+                  Markdown files render as they load, on every site. There's
+                  nothing to do here.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="lede">
+                  {renderState === 'raw'
+                    ? 'This tab was already open when automatic rendering was turned on, so it still shows raw text.'
+                    : 'Automatic rendering is on for pages opened from now on. This tab may predate it.'}
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={busy !== null}
+                  onClick={() => void handleRender(target.tabId)}
+                >
+                  {busy === 'render' ? 'Rendering…' : 'Render this page'}
+                </button>
+              </>
+            )}
+            <p className="sub sub-link">
+              <button type="button" className="link" onClick={openSettings}>
+                Settings
+              </button>{' '}
+              turns automatic rendering back off.
+            </p>
+          </>
+        )}
+
+        {target.kind === 'web' && !autoRender && (
           <>
             <button
               type="button"
