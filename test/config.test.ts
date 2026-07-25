@@ -13,7 +13,7 @@ import {
   MARKDOWN_EXTENSIONS,
   RAW_HOSTS,
   RENDERS_ITS_OWN_MARKDOWN,
-  RENDERER_CSS,
+  RENDERER_CSS_FILES,
   RENDERER_JS,
   RESTRICTED_SCHEMES,
   SUPPORTED_PROTOCOLS,
@@ -80,7 +80,7 @@ test('theme options cover the default and have no duplicates', () => {
 test('injected build paths are relative', () => {
   // chrome.scripting resolves these against the extension root; a leading slash
   // or a URL would fail to resolve at injection time and only at injection time.
-  for (const path of [RENDERER_JS, RENDERER_CSS]) {
+  for (const path of [RENDERER_JS, ...RENDERER_CSS_FILES]) {
     assert.ok(!path.startsWith('/'), `${path} must not be absolute`);
     assert.ok(!path.includes('://'), `${path} must not be a URL`);
   }

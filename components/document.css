@@ -178,8 +178,8 @@
    4. Heading anchors
 
    Parked in the left gutter and absolutely positioned, so a heading's text
-   wraps exactly the same whether the anchor is visible or not. Sized in `rem`
-   rather than `em`: at h1 scale an em-sized icon would be wider than the
+   wraps exactly the same whether the anchor is visible or not. Its width is in
+   `rem` rather than `em`: at h1 scale an em-sized icon would be wider than the
    narrowest gutter the document column ever has.
    ========================================================================== */
 
@@ -191,12 +191,14 @@
 .mdv-body .mdv-anchor:visited {
   position: absolute;
   right: 100%;
-  top: 0.14em;
+  top: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 1rem;
-  height: 1rem;
+  /* One line box of the heading it belongs to, so the icon stays optically
+     centred on the first line whether that line is an h1 or an h4. */
+  height: 1lh;
   margin-right: 0.15rem;
   color: var(--mdv-fg-muted);
   text-decoration: none;
@@ -266,13 +268,5 @@
   .mdv-body .mdv-copy,
   .mdv-body .mdv-anchor {
     display: none;
-  }
-
-  .mdv-body .mdv-code {
-    margin: 0 0 var(--mdv-block-gap);
-  }
-
-  .mdv-body .mdv-raw {
-    white-space: pre-wrap;
   }
 }

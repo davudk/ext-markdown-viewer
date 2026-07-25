@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from 'react';
 
 import './document.css';
 
@@ -93,7 +100,7 @@ export function Document({
    * body is replaced, on nodes React is not tracking.
    */
   const handleBodyClick = useCallback(
-    (event: React.MouseEvent<HTMLElement>) => {
+    (event: MouseEvent<HTMLElement>) => {
       const origin = event.target;
       if (!(origin instanceof Element)) return;
 
@@ -123,8 +130,11 @@ export function Document({
   }, [html, showRaw, clearFeedback]);
 
   return (
-    <>
-      <div className="mdv-toolbar">
+    // A single root, not a fragment: `.mdv > :not(nav)` in viewer.css grants
+    // `flex: 1 1 auto` to every non-nav child of the shell, so top-level
+    // siblings here would be laid out side by side in the flex row.
+    <div className="mdv-doc">
+      <div className="mdv-toolbar" data-mdv-chrome>
         <button
           type="button"
           className="mdv-tool"
@@ -179,7 +189,7 @@ export function Document({
           dangerouslySetInnerHTML={markup}
         />
       )}
-    </>
+    </div>
   );
 }
 

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 // Straight from config rather than through settings.ts, which re-exports only
 // the theme surface. These are static tables, not behaviour — see config.ts.
 import {
+  DOCUMENT_STATE_LIMIT,
   CONTENT_WIDTH_CH,
   CONTENT_WIDTH_OPTIONS,
   FONT_FAMILY_OPTIONS,
@@ -56,7 +57,7 @@ type State =
   | { kind: 'ready'; access: Access };
 
 /** Which section a message belongs under, so it lands next to its control. */
-type Section = 'rendering' | 'files' | 'sites' | 'reading';
+type Section = 'rendering' | 'files' | 'sites' | 'reading' | 'behaviour';
 
 /**
  * The typography settings this section owns. Named as a subset so the reset
@@ -80,6 +81,22 @@ function pickReading(settings: Settings): Reading {
 }
 
 const READING_DEFAULTS: Reading = pickReading(DEFAULT_SETTINGS);
+
+/**
+ * The two settings that change what the viewer *does* rather than how it looks.
+ * Both are plain switches, so unlike the typography sliders there is nothing to
+ * debounce — each flip is a single deliberate write.
+ */
+type Behaviour = Pick<Settings, 'liveReload' | 'rememberScroll'>;
+
+function pickBehaviour(settings: Settings): Behaviour {
+  return {
+    liveReload: settings.liveReload,
+    rememberScroll: settings.rememberScroll,
+  };
+}
+
+const BEHAVIOUR_DEFAULTS: Behaviour = pickBehaviour(DEFAULT_SETTINGS);
 
 /**
  * How long a slider may keep moving before its value is written.
@@ -367,6 +384,7 @@ function App() {
   const [copied, setCopied] = useState(false);
   const [theme, setTheme] = useState<Theme>(DEFAULT_SETTINGS.theme);
   const [reading, setReading] = useState<Reading>(READING_DEFAULTS);
+  const [behaviour, setBehaviour] = useState<Behaviour>(BEHAVIOUR_DEFAULTS);
   const [app] = useState(readManifest);
 
   /**
@@ -433,6 +451,17 @@ function App() {
       writeTimer.current = window.setTimeout(flushReading, WRITE_DELAY_MS);
     },
     [flushReading],
+  );
+
+  /** Switches write immediately: a flip is one deliberate act, not a drag. */
+  const applyBehaviour = useCallback(
+    (patch: Partial<Behaviour>) => {
+      setBehaviour((prev) => ({ ...prev, ...patch }));
+      void saveSettings(patch).catch((error) =>
+        say('behaviour', 'error', describeError(error)),
+      );
+    },
+    [say],
   );
 
   const resetReading = () => {
@@ -515,6 +544,7 @@ function App() {
     void loadSettings().then((settings) => {
       setTheme(settings.theme);
       setReading(pickReading(settings));
+      setBehaviour(pickBehaviour(settings));
     });
   }, [refresh]);
 
@@ -1118,6 +1148,67 @@ function App() {
             </div>
 
             <Message notice={noticeFor('reading')} />
+          </div>
+        </section>
+
+        {/* Behaviour ---------------------------------------------------- */}
+        <section className="card" aria-labelledby="behaviour-h">
+          <div className="card-head">
+            <h2 id="behaviour-h">Behaviour</h2>
+          </div>
+
+          <div className="row">
+            <div className="row-main">
+              <h3 className="row-title" id="scroll-label">
+                Remember where you left off
+              </h3>
+              <p className="row-desc" id="scroll-desc">
+                Reopening a document returns you to the section you were
+                reading. Positions are stored locally and are kept for the last
+                {' '}
+                {DOCUMENT_STATE_LIMIT} documents.
+              </p>
+            </div>
+
+            <Switch
+              on={behaviour.rememberScroll}
+              busy={false}
+              disabled={false}
+              labelledBy="scroll-label"
+              describedBy="scroll-desc"
+              onChange={(next) => applyBehaviour({ rememberScroll: next })}
+            />
+          </div>
+
+          <div className="row">
+            <div className="row-main">
+              <h3 className="row-title" id="reload-label">
+                Reload when the file changes
+              </h3>
+              {/* The copy states the network consequence plainly, because this
+                  is the one setting that causes the extension to make a
+                  request at all. */}
+              <p className="row-desc" id="reload-desc">
+                Re-reads the open document while you edit it, so saving shows
+                the change without a refresh. This is the only setting that
+                makes the extension send a request, and it only ever re-reads
+                the document already on screen — never anything else, and never
+                anywhere else. It is off unless you turn it on.
+              </p>
+            </div>
+
+            <Switch
+              on={behaviour.liveReload}
+              busy={false}
+              disabled={false}
+              labelledBy="reload-label"
+              describedBy="reload-desc"
+              onChange={(next) => applyBehaviour({ liveReload: next })}
+            />
+          </div>
+
+          <div className="row row-stack">
+            <Message notice={noticeFor('behaviour')} />
           </div>
         </section>
 

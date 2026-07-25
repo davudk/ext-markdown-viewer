@@ -1,4 +1,4 @@
-import { CONTENT_SCRIPT_ID, RENDERER_CSS, RENDERER_JS } from '@/lib/config';
+import { CONTENT_SCRIPT_ID, RENDERER_CSS_FILES, RENDERER_JS } from '@/lib/config';
 import { expandOrigin, fileMatchPatterns, hasFileAccess } from '@/lib/permissions';
 import type { Message, RenderTabResult, SyncResult } from '@/lib/messages';
 
@@ -46,7 +46,7 @@ async function syncRegistrations(): Promise<number> {
       id: CONTENT_SCRIPT_ID,
       matches: [...matches],
       js: [RENDERER_JS],
-      css: [RENDERER_CSS],
+      css: RENDERER_CSS_FILES,
       runAt: 'document_start',
       allFrames: false,
       persistAcrossSessions: true,
@@ -60,7 +60,7 @@ async function syncRegistrations(): Promise<number> {
 async function renderTab(tabId: number): Promise<RenderTabResult> {
   try {
     // CSS first so the document never flashes unstyled between the two calls.
-    await chrome.scripting.insertCSS({ target: { tabId }, files: [RENDERER_CSS] });
+    await chrome.scripting.insertCSS({ target: { tabId }, files: RENDERER_CSS_FILES });
     await chrome.scripting.executeScript({ target: { tabId }, files: [RENDERER_JS] });
     return { ok: true };
   } catch (error) {

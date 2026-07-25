@@ -123,7 +123,18 @@ export const SHORTCUTS = {
  * extension, because a wrong path here fails only at runtime.
  */
 export const RENDERER_JS = 'renderer.js';
-export const RENDERER_CSS = 'assets/viewer.css';
+
+/**
+ * Every stylesheet the renderer needs, in cascade order.
+ *
+ * There are two because they arrive by different routes: `viewer.css` is a CSS
+ * entrypoint, while `renderer.css` is what Vite emits for the stylesheets the
+ * React components import. Missing the second one costs no build error and no
+ * type error — the document simply renders with its chrome unstyled — so
+ * `scripts/check-build.mjs` asserts that no emitted stylesheet is left
+ * unreachable.
+ */
+export const RENDERER_CSS_FILES = ['assets/viewer.css', 'assets/renderer.css'];
 
 /* -------------------------------------------------------------------------- */
 /* Permissions                                                                 */
