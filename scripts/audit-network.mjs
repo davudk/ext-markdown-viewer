@@ -26,9 +26,16 @@ const INERT_URLS = [
   ['https://github.com/markedjs/', 'marked error messages'],
 ];
 
-/** Anything here can open a connection or pull a resource; always a failure. */
+/**
+ * Anything here can open a connection or pull a resource; always a failure.
+ *
+ * `fetch` is deliberately absent: live reload re-reads the open document's own
+ * address, which is a real request and cannot be checked by pattern-matching
+ * minified output. It is policed against the *source* tree instead — see
+ * `auditFetchCallSites` below — which is stricter, because it fails on a new
+ * call site rather than on a string that happens to look like one.
+ */
 const NETWORK_APIS = [
-  /\bfetch\s*\(/,
   /\bXMLHttpRequest\b/,
   /\bWebSocket\b/,
   /\bEventSource\b/,
@@ -69,6 +76,92 @@ function walk(dir) {
 const failures = [];
 const notices = [];
 
+/**
+ * Every `fetch` call site in the source, checked against `FETCH_ALLOWLIST` in
+ * lib/config.ts. This is the real guard on the network claim: the built bundle
+ * cannot distinguish "re-reads the open document" from "phones home", but the
+ * source can, and a new call site anywhere fails the build.
+ */
+/**
+ * Blanks out comments and string bodies so a call site is counted only where it
+ * is actually code. Without this, a comment discussing `fetch(` inflates the
+ * count — which matters in both directions: it reads as a call that isn't
+ * there, and it hides a real one behind an already-nonzero number.
+ */
+function stripCommentsAndStrings(source) {
+  let out = '';
+  let state = 'code';
+  let quote = '';
+
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    const next = source[i + 1];
+
+    if (state === 'code') {
+      if (char === '/' && next === '/') { state = 'line'; out += '  '; i += 1; continue; }
+      if (char === '/' && next === '*') { state = 'block'; out += '  '; i += 1; continue; }
+      if (char === '"' || char === "'" || char === '`') { state = 'string'; quote = char; out += char; continue; }
+      out += char;
+      continue;
+    }
+
+    if (state === 'line') {
+      if (char === '\n') { state = 'code'; out += char; continue; }
+      out += ' ';
+      continue;
+    }
+
+    if (state === 'block') {
+      if (char === '*' && next === '/') { state = 'code'; out += '  '; i += 1; continue; }
+      out += char === '\n' ? char : ' ';
+      continue;
+    }
+
+    // In a string: a backslash escapes whatever follows, including the quote.
+    if (char === '\\') { out += '  '; i += 1; continue; }
+    if (char === quote) { state = 'code'; out += char; continue; }
+    out += ' ';
+  }
+
+  return out;
+}
+
+function auditFetchCallSites() {
+  const config = readFileSync('lib/config.ts', 'utf8');
+  const declared = config.match(/^export const FETCH_ALLOWLIST = \[([^\]]*)\];$/m);
+
+  if (!declared) {
+    failures.push('could not read FETCH_ALLOWLIST from lib/config.ts');
+    return;
+  }
+
+  const allowed = new Set(
+    [...declared[1].matchAll(/'([^']+)'/g)].map((match) => match[1]),
+  );
+
+  const sources = ['lib', 'entrypoints', 'components'].flatMap((dir) =>
+    walk(dir).filter((file) => /\.tsx?$/.test(file)),
+  );
+
+  for (const file of sources) {
+    const code = stripCommentsAndStrings(readFileSync(file, 'utf8'));
+    const calls = (code.match(/(?<![.\w])fetch\s*\(/g) ?? []).length;
+    if (calls === 0) continue;
+
+    if (allowed.has(file)) {
+      notices.push(`${file}: ${calls} allowlisted fetch call site(s)`);
+    } else {
+      failures.push(`${file}: fetch outside FETCH_ALLOWLIST (${calls} call site(s))`);
+    }
+  }
+
+  for (const file of allowed) {
+    if (!sources.includes(file)) {
+      failures.push(`FETCH_ALLOWLIST names a file with no fetch left in it: ${file}`);
+    }
+  }
+}
+
 for (const file of walk(OUT)) {
   if (!['.js', '.css', '.html', '.json'].includes(extname(file))) continue;
   const text = readFileSync(file, 'utf8');
@@ -95,6 +188,8 @@ for (const file of walk(OUT)) {
     else failures.push(`${file}: unclassified external URL ${url}`);
   }
 }
+
+auditFetchCallSites();
 
 if (notices.length > 0) {
   console.log(`${notices.length} inert URL string(s):`);

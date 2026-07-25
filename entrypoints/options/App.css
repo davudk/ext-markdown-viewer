@@ -545,6 +545,82 @@ code {
   outline-offset: 1px;
 }
 
+/* Sliders ------------------------------------------------------------------ */
+
+.slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  width: 220px;
+  margin-top: 2px;
+}
+
+.slider input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  /* Native track and thumb, tinted. It follows color-scheme on its own, so
+     both themes are handled without rebuilding the control by hand. */
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.slider input[type='range']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.slider-value {
+  flex: none;
+  min-width: 4ch;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: right;
+  /* The value changes continuously during a drag; proportional digits would
+     make the whole label shuffle sideways as it counted. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Preview ------------------------------------------------------------------ */
+
+.preview {
+  margin-top: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--fg);
+  overflow-wrap: break-word;
+
+  /* The same four custom properties the viewer sets on a real document, read
+     from the same VIEWER_CSS_VARS mapping — so this is the setting itself
+     rendering, not a separate impression of it. `--mdv-measure` may be the
+     literal `none`, which `max-width` accepts directly. The `ch` widths resolve
+     against this element's own font, which is exactly the font being previewed. */
+  font-family: var(--mdv-font-body);
+  font-size: var(--mdv-font-size);
+  line-height: var(--mdv-line-height);
+  max-width: var(--mdv-measure);
+}
+
+.preview p {
+  margin: 0 0 0.7em;
+  text-wrap: pretty;
+}
+
+.preview p:last-child {
+  margin-bottom: 0;
+}
+
+.preview-title {
+  font-size: 1.2em;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
 /* Narrow windows ----------------------------------------------------------- */
 
 @media (max-width: 560px) {
@@ -555,6 +631,11 @@ code {
   .row {
     flex-direction: column;
     gap: 14px;
+  }
+
+  /* Stacked under its label now, so it may as well use the full width. */
+  .slider {
+    width: 100%;
   }
 }
 

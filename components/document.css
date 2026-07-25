@@ -1,0 +1,278 @@
+/* Markdown Viewer — the affordances layered over the document.
+
+   Only the chrome lives here: the toolbar, the per-block copy buttons and the
+   heading anchors. Everything about the document itself is in
+   entrypoints/viewer.css, and every colour below comes from the `--mdv-*`
+   tokens it defines, so both themes are covered without a single media query.
+
+   Selectors are deliberately a class heavier than they need to be. This file
+   and viewer.css reach the page through different paths — one bundled with the
+   renderer, one injected by the service worker — so their order is not
+   guaranteed and nothing here may depend on winning a tie. */
+
+/* ==========================================================================
+   1. Shared bits
+   ========================================================================== */
+
+.mdv-icon {
+  flex: none;
+  display: block;
+}
+
+/* Idle / copied / failed are three sibling faces of the same control, swapped
+   by an attribute. The alternative — rewriting label text and icons per click —
+   would mean touching nodes React does not own on every interaction. */
+.mdv-face {
+  display: none;
+  align-items: center;
+  gap: 0.4em;
+}
+
+:is(.mdv-copy, .mdv-anchor):not([data-mdv-copied]) .mdv-face-idle,
+:is(.mdv-copy, .mdv-anchor)[data-mdv-copied='yes'] .mdv-face-done,
+:is(.mdv-copy, .mdv-anchor)[data-mdv-copied='no'] .mdv-face-fail {
+  display: inline-flex;
+}
+
+.mdv-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+   2. Toolbar
+
+   Fixed rather than in flow: the shell may or may not put a sidebar beside the
+   document, and a fixed corner is the one position that is correct either way.
+   Muted until approached, so it reads as chrome and not as content.
+   ========================================================================== */
+
+.mdv-toolbar {
+  position: fixed;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 20;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.mdv-tool {
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 550;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0;
+  padding: 0.45em 0.65em;
+  color: var(--mdv-fg-muted);
+  background-color: var(--mdv-surface);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-sm);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease,
+    background-color var(--mdv-dur) ease, border-color var(--mdv-dur) ease;
+}
+
+.mdv-toolbar:hover .mdv-tool,
+.mdv-tool:focus,
+.mdv-tool[aria-pressed='true'] {
+  opacity: 1;
+}
+
+.mdv-tool:hover {
+  color: var(--mdv-fg);
+  border-color: var(--mdv-border-strong);
+}
+
+.mdv-tool[aria-pressed='true'] {
+  color: var(--mdv-on-accent);
+  background-color: var(--mdv-accent);
+  border-color: var(--mdv-accent);
+}
+
+/* ==========================================================================
+   3. Copy button on code blocks
+
+   The button is a sibling of the <pre>, not a child. A <pre> is its own
+   horizontal scroll container, so an absolutely positioned child would slide
+   out of view as soon as the reader scrolled a wide line — and it would land
+   in `pre.textContent`, which is what the button copies.
+   ========================================================================== */
+
+.mdv-body .mdv-code {
+  position: relative;
+  /* The block margin moves to the wrapper so the `:first-child` / `:last-child`
+     rules in viewer.css keep meeting the element they expect. */
+  margin: 0 0 var(--mdv-block-gap);
+  break-inside: avoid;
+}
+
+.mdv-body .mdv-code > pre {
+  margin: 0;
+}
+
+.mdv-body .mdv-copy {
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 550;
+  line-height: 1;
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0.42em 0.6em;
+  color: var(--mdv-fg-muted);
+  /* Reads against both `--mdv-surface` (a top-level block) and `--mdv-bg`
+     (one nested in a list or quote); the border carries it either way. */
+  background-color: var(--mdv-bg);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease,
+    border-color var(--mdv-dur) ease;
+}
+
+.mdv-body .mdv-code:hover > .mdv-copy,
+.mdv-body .mdv-copy:focus,
+.mdv-body .mdv-copy[data-mdv-copied] {
+  opacity: 1;
+}
+
+.mdv-body .mdv-copy:hover {
+  color: var(--mdv-fg);
+  border-color: var(--mdv-border-strong);
+}
+
+.mdv-body .mdv-copy[data-mdv-copied='yes'] {
+  color: var(--mdv-tk-addition);
+  border-color: var(--mdv-tk-addition);
+}
+
+.mdv-body .mdv-copy[data-mdv-copied='no'] {
+  color: var(--mdv-tk-deletion);
+  border-color: var(--mdv-tk-deletion);
+}
+
+/* Nothing to hover on a touch screen, so the affordance has to be standing. */
+@media (hover: none) {
+  .mdv-body .mdv-copy {
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   4. Heading anchors
+
+   Parked in the left gutter and absolutely positioned, so a heading's text
+   wraps exactly the same whether the anchor is visible or not. Sized in `rem`
+   rather than `em`: at h1 scale an em-sized icon would be wider than the
+   narrowest gutter the document column ever has.
+   ========================================================================== */
+
+.mdv-body :is(h1, h2, h3, h4) {
+  position: relative;
+}
+
+.mdv-body .mdv-anchor,
+.mdv-body .mdv-anchor:visited {
+  position: absolute;
+  right: 100%;
+  top: 0.14em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.15rem;
+  color: var(--mdv-fg-muted);
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease;
+}
+
+.mdv-body :is(h1, h2, h3, h4):hover > .mdv-anchor,
+.mdv-body .mdv-anchor:focus,
+.mdv-body .mdv-anchor[data-mdv-copied] {
+  opacity: 1;
+}
+
+.mdv-body .mdv-anchor:hover {
+  color: var(--mdv-accent);
+  text-decoration: none;
+}
+
+.mdv-body .mdv-anchor[data-mdv-copied='yes'] {
+  color: var(--mdv-tk-addition);
+}
+
+.mdv-body .mdv-anchor[data-mdv-copied='no'] {
+  color: var(--mdv-tk-deletion);
+}
+
+@media (hover: none) {
+  .mdv-body .mdv-anchor {
+    opacity: 0.4;
+  }
+}
+
+/* ==========================================================================
+   5. Raw source view
+
+   The source is the whole document here, so it drops the code-block framing
+   and wraps instead of scrolling — a raw README should never need two axes.
+   ========================================================================== */
+
+.mdv-body .mdv-raw {
+  font-size: 0.88em;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--mdv-fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+}
+
+/* ==========================================================================
+   6. Motion and print
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-tool,
+  .mdv-body .mdv-copy,
+  .mdv-body .mdv-anchor {
+    transition: none;
+  }
+}
+
+/* The printed page is the document alone. */
+@media print {
+  .mdv-toolbar,
+  .mdv-body .mdv-copy,
+  .mdv-body .mdv-anchor {
+    display: none;
+  }
+
+  .mdv-body .mdv-code {
+    margin: 0 0 var(--mdv-block-gap);
+  }
+
+  .mdv-body .mdv-raw {
+    white-space: pre-wrap;
+  }
+}

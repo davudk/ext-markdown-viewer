@@ -88,12 +88,25 @@
   --mdv-scale-3: 1.728em;
   --mdv-scale-4: 2.074em;
 
-  --mdv-measure: 72ch;
+  /* Typography is settings-driven: `Viewer.tsx` writes --mdv-font-body,
+     --mdv-font-size, --mdv-line-height and --mdv-measure inline on `.mdv` from
+     VIEWER_CSS_VARS. They are deliberately *not* declared here — a `:root`
+     declaration would win over the `var(…, fallback)` at every use site, so the
+     fallback could never fire. Instead each use site carries its own fallback,
+     which is what renders in the window between this sheet being injected and
+     React mounting, and what keeps the sheet usable standalone.
+
+     --mdv-leading below is the line-height fallback, kept as a token because
+     other rules read it too. */
   --mdv-leading: 1.65;
   --mdv-block-gap: 1.15em;
   --mdv-radius: 8px;
   --mdv-radius-sm: 4px;
   --mdv-dur: 120ms;
+
+  /* Sidebar track width. Only the outer box is set here; the components that
+     live inside the sidebar own everything within it. */
+  --mdv-toc-width: clamp(12.5rem, 17vw, 17rem);
 }
 
 /* ==========================================================================
@@ -146,11 +159,75 @@ body {
 }
 
 /* ==========================================================================
-   3. Document column
+   3. Shell
+
+   `.mdv` is the flex container; `.mdv-with-toc` marks the case where a sidebar
+   <nav> is present. Only the relationship between the two tracks is set here —
+   the sidebar's own contents are styled by the component that renders them.
+   ========================================================================== */
+
+.mdv {
+  display: flex;
+  align-items: flex-start;
+  min-height: 100vh;
+
+  /* The four settings-driven properties, each with the value that was
+     hardcoded in v1.0 as its fallback. Applied on `.mdv` rather than
+     `#mdv-root` because that is the element the inline custom properties land
+     on, and a custom property is only visible to the element carrying it and
+     its descendants. */
+  font-family: var(--mdv-font-body, var(--mdv-font-sans));
+  font-size: var(--mdv-font-size, clamp(1rem, 0.955rem + 0.22vw, 1.09rem));
+  line-height: var(--mdv-line-height, var(--mdv-leading));
+}
+
+/* The document track takes the leftover space. `min-width: 0` is what stops a
+   wide table or an unbreakable code line from forcing the flex item past the
+   viewport and pushing the sidebar off-screen. */
+.mdv > * {
+  min-width: 0;
+}
+
+.mdv > :not(nav) {
+  flex: 1 1 auto;
+}
+
+/* Its own track, so it can never sit on top of the document. Sticky rather
+   than fixed: fixed would escape the flex row and re-introduce the overlap. */
+.mdv-with-toc > nav {
+  flex: 0 0 var(--mdv-toc-width);
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--mdv-scrollbar) transparent;
+}
+
+/* Below the point where two columns stop being readable, the sidebar stacks
+   above the document instead of squeezing the measure to nothing. */
+@media (max-width: 60rem) {
+  .mdv-with-toc {
+    display: block;
+  }
+
+  .mdv-with-toc > nav {
+    position: static;
+    max-height: none;
+    border-bottom: 1px solid var(--mdv-border);
+  }
+}
+
+/* ==========================================================================
+   4. Document column
    ========================================================================== */
 
 .mdv-body {
-  max-width: var(--mdv-measure);
+  /* `--mdv-measure` is a length for narrow/normal/wide and the literal `none`
+     for full width. `max-width: none` is the CSS-native way to say "no cap", so
+     full width needs no branch here — the auto inline margins simply stop
+     having any slack to distribute and the column fills its track. */
+  max-width: var(--mdv-measure, 72ch);
   margin-inline: auto;
   padding-inline: clamp(1.15rem, 5vw, 2rem);
   padding-block: clamp(2rem, 6vw, 3.75rem) 6rem;
@@ -184,7 +261,7 @@ body {
 }
 
 /* ==========================================================================
-   4. Headings
+   5. Headings
    ========================================================================== */
 
 .mdv-body h1,
@@ -250,7 +327,7 @@ body {
 }
 
 /* ==========================================================================
-   5. Inline text
+   6. Inline text
    ========================================================================== */
 
 .mdv-body strong,
@@ -324,7 +401,7 @@ body {
 }
 
 /* ==========================================================================
-   6. Links
+   7. Links
    ========================================================================== */
 
 .mdv-body a {
@@ -356,7 +433,7 @@ body {
 }
 
 /* ==========================================================================
-   7. Lists
+   8. Lists
    ========================================================================== */
 
 .mdv-body ul,
@@ -461,7 +538,7 @@ body {
 }
 
 /* ==========================================================================
-   8. Blockquote, rule, media, disclosure
+   9. Blockquote, rule, media, disclosure
    ========================================================================== */
 
 .mdv-body blockquote {
@@ -536,7 +613,7 @@ body {
 }
 
 /* ==========================================================================
-   9. Code
+   10. Code
    ========================================================================== */
 
 .mdv-body code,
@@ -586,7 +663,7 @@ body {
 }
 
 /* ==========================================================================
-   10. highlight.js token theme
+   11. highlight.js token theme
    ========================================================================== */
 
 .mdv-body .hljs {
@@ -694,7 +771,7 @@ body {
 }
 
 /* ==========================================================================
-   11. Tables
+   12. Tables
 
    `display: block` turns the table itself into the scroll container, so a wide
    table scrolls on its own instead of pushing the page sideways.
@@ -751,7 +828,7 @@ body {
 }
 
 /* ==========================================================================
-   12. Scrollbars & selection
+   13. Scrollbars & selection
    ========================================================================== */
 
 .mdv-body pre::-webkit-scrollbar,
@@ -776,7 +853,7 @@ body {
 }
 
 /* ==========================================================================
-   13. Motion
+   14. Motion
    ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
@@ -790,7 +867,11 @@ body {
 }
 
 /* ==========================================================================
-   14. Print — force the light palette regardless of the active theme.
+   15. Print
+
+   Two jobs: force the light palette regardless of the active theme, and strip
+   the page back to the document — no sidebar, no toolbars, no buttons, no
+   hover-only anchor affordances, no measure cap.
    ========================================================================== */
 
 @media print {
@@ -833,10 +914,42 @@ body {
     color: var(--mdv-fg);
   }
 
+  /* Every piece of UI chrome, by role rather than by class name: the sidebar is
+     a <nav>, anything clickable is a <button>, and anything else that exists
+     only for on-screen use (toolbars, heading anchor links, copy affordances)
+     carries `data-mdv-chrome`. Keying off the attribute rather than the
+     components' own class names means a rename over there can't silently start
+     printing the toolbar. */
+  #mdv-root nav,
+  #mdv-root button,
+  #mdv-root [data-mdv-chrome] {
+    display: none !important;
+  }
+
+  /* The sidebar is gone, so the flex row has nothing left to lay out. */
+  .mdv,
+  .mdv-with-toc {
+    display: block;
+    min-height: 0;
+    font-size: 11pt;
+  }
+
   .mdv-body {
+    /* Paper already has margins; a measure cap on top of them wastes the page. */
     max-width: none;
     padding: 0;
     font-size: 11pt;
+  }
+
+  /* Chrome does force `loading="lazy"` images to load before printing, but only
+     for images that are actually laid out and painted — one skipped by
+     content-visibility, or still sitting at zero opacity behind a fade-in that
+     never ran because it was never scrolled to, prints blank. Opt them all back
+     in for the print pass. */
+  .mdv-body img {
+    content-visibility: visible !important;
+    visibility: visible !important;
+    opacity: 1 !important;
   }
 
   .mdv-body pre,

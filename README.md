@@ -9,9 +9,12 @@ These are decided once and apply to everything:
 
 - **No permissions at install time.** Host access is optional, requested
   per-origin, and only ever in response to a user action.
-- **Zero network calls.** No analytics, no telemetry, no webfonts, no CDNs.
-  Every library is bundled. This is enforced by a build check, not a promise —
-  see [Verifying the zero-network claim](#verifying-the-zero-network-claim).
+- **No network calls, with one opt-in exception.** No analytics, no telemetry,
+  no webfonts, no CDNs, no accounts. Every library is bundled. The single
+  exception is live reload, which re-requests the open document's own address to
+  notice edits — it is off by default and nothing else may make a request. This
+  is enforced by a build check, not a promise — see
+  [Verifying the network claim](#verifying-the-network-claim).
 - **Local state only.** Everything lives in `chrome.storage.local`. Never
   `chrome.storage.sync`, which round-trips through Google's servers.
 - **Manifest V3**, with a stateless service worker.
@@ -89,17 +92,41 @@ extension's details page is the only mechanism that exists. The extension
 detects the current state with `chrome.extension.isAllowedFileSchemeAccess()`
 and explains what to do; it cannot enable it for you.
 
-## Verifying the zero-network claim
+## Verifying the network claim
 
 ```bash
 npm run build
 node scripts/audit-network.mjs
 ```
 
-Scans the built output for `fetch`, `XMLHttpRequest`, `WebSocket`,
-`EventSource`, `sendBeacon`, `importScripts`, `@font-face`, and any external
-URL. Exits non-zero on a finding. W3C/WHATWG namespace URIs are allowlisted —
-DOMPurify compares against them as string constants and never requests them.
+Two checks, because "this string contains a URL" and "this code makes a
+request" are different claims:
+
+- **The built output** is scanned for `XMLHttpRequest`, `WebSocket`,
+  `EventSource`, `sendBeacon`, `importScripts`, `FontFace`, `@font-face`,
+  `@import`, remote `url()`, and any external URL. Anything found fails the
+  build. URLs that are only ever inert string constants — W3C namespace URIs
+  DOMPurify compares against, library error-message links — are printed as
+  notices every run rather than silently allowlisted, so a new one has to be
+  looked at and classified.
+- **The source tree** is scanned for `fetch` call sites, which are permitted
+  only in the modules named by `FETCH_ALLOWLIST` in
+  [lib/config.ts](lib/config.ts) — today that is `lib/hooks.ts` alone. This is
+  the stricter half: minified output cannot distinguish "re-reads the open
+  document" from "phones home", but the source can, and a `fetch` appearing
+  anywhere else fails the build rather than being caught in review. Comments and
+  string literals are stripped before counting, so a comment discussing `fetch`
+  neither invents a call site nor hides a real one behind it.
+
+### Live reload, the one exception
+
+Detecting that a file changed means re-reading it, and there is no other way.
+The implementation is deliberately narrow: it re-derives the target from
+`location`, refuses to run unless that matches the document it was handed,
+strips the fragment, sets `redirect: 'error'` so a redirect cannot send it
+somewhere it did not choose, sends no body, and uses conditional requests so the
+steady state is a bodyless `304`. It is **off by default** — it is the only
+setting that is — and it requests nothing but the document already on screen.
 
 ## Known limits
 

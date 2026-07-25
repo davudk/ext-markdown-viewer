@@ -48,15 +48,20 @@ export default defineUnlistedScript(() => {
     const host = claimBody();
 
     try {
-      // Resolving the theme is async, and it has to win the race against the
-      // first paint: revealing before the attribute is set would flash the
-      // light palette on a dark document.
-      await applyTheme();
+      // One read, used twice: the theme has to be on <html> before the reveal,
+      // and the same settings seed the viewer so its first paint already has
+      // the right typography rather than snapping to it a frame later.
+      const settings = await loadSettings();
+      applyTheme(settings.theme);
 
       // React 19 commits asynchronously by default; flushSync makes the markup
       // exist before `reveal()` runs, so there is no blank frame between the
       // raw text disappearing and the rendered view appearing.
-      flushSync(() => createRoot(host).render(<Viewer source={source} />));
+      flushSync(() =>
+        createRoot(host).render(
+          <Viewer source={source} initialSettings={settings} />,
+        ),
+      );
     } catch (error) {
       // Chrome's <pre> is already gone, so failing here without a fallback
       // would hand the reader a blank page — strictly worse than the raw text
@@ -119,9 +124,9 @@ function restoreRawText(source: string): void {
  * Reflects the effective theme onto <html> as `data-mdv-theme`, which is what
  * viewer.css keys off, and keeps it current for the life of the document.
  */
-async function applyTheme() {
+function applyTheme(initial: Theme) {
   const darkQuery = matchMedia('(prefers-color-scheme: dark)');
-  let theme: Theme = (await loadSettings()).theme;
+  let theme: Theme = initial;
 
   const paint = () => {
     document.documentElement.dataset[VIEWER_THEME_DATASET_KEY] =

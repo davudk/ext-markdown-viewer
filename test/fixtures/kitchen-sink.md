@@ -17,10 +17,34 @@ Every Bucket 1 rendering requirement in one file, plus the payloads that must
 **Bold**, _italic_, **_bold italic_**, ~~strikethrough~~, `inline code`, and a
 [link](https://example.com). An autolink: <https://example.com>.
 
-Reference-style [link][ref] and a footnote-looking thing that isn't one[^not].
+Reference-style [link][ref] and a real footnote[^note].
 
 [ref]: https://example.com
-[^not]: Footnotes are Bucket 2 — this should render as literal text in v1.0.
+[^note]: Footnote content, rendered at the foot of the document.
+
+Emoji shortnames resolved from a bundled table, never a network call:
+:rocket: :tada: :warning: :white_check_mark:
+
+An unknown shortname must survive untouched: :definitely_not_an_emoji:
+
+## Heading slugs
+
+Headings get GitHub-compatible ids so hand-written anchors resolve. These two
+share a slug and must be disambiguated, and the link below must reach the
+second one.
+
+### Options
+
+First one.
+
+### Options
+
+Second one — reachable as [#options-1](#options-1).
+
+### Install & Setup
+
+Punctuation is dropped but its space is not, so this is `install--setup`:
+[jump](#install--setup).
 
 ## Lists
 

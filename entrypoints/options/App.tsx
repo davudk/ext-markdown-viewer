@@ -1,5 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 
+// Straight from config rather than through settings.ts, which re-exports only
+// the theme surface. These are static tables, not behaviour — see config.ts.
+import {
+  CONTENT_WIDTH_CH,
+  CONTENT_WIDTH_OPTIONS,
+  FONT_FAMILY_OPTIONS,
+  FONT_SIZE_RANGE,
+  FONT_STACKS,
+  LINE_HEIGHT_RANGE,
+  VIEWER_CSS_VARS,
+} from '@/lib/config';
 import { sendMessage, type SyncResult } from '@/lib/messages';
 import {
   disableAutoRender,
@@ -16,6 +27,7 @@ import {
   loadSettings,
   onSettingsChanged,
   saveSettings,
+  type Settings,
   type Theme,
 } from '@/lib/settings';
 import './App.css';
@@ -44,7 +56,68 @@ type State =
   | { kind: 'ready'; access: Access };
 
 /** Which section a message belongs under, so it lands next to its control. */
-type Section = 'rendering' | 'files' | 'sites';
+type Section = 'rendering' | 'files' | 'sites' | 'reading';
+
+/**
+ * The typography settings this section owns. Named as a subset so the reset
+ * button and the storage mirror both stay in step with it automatically —
+ * `liveReload` and `rememberScroll` belong to another section and must not be
+ * touched by anything here.
+ */
+type Reading = Pick<
+  Settings,
+  'fontFamily' | 'fontSize' | 'lineHeight' | 'contentWidth' | 'showToc'
+>;
+
+function pickReading(settings: Settings): Reading {
+  return {
+    fontFamily: settings.fontFamily,
+    fontSize: settings.fontSize,
+    lineHeight: settings.lineHeight,
+    contentWidth: settings.contentWidth,
+    showToc: settings.showToc,
+  };
+}
+
+const READING_DEFAULTS: Reading = pickReading(DEFAULT_SETTINGS);
+
+/**
+ * How long a slider may keep moving before its value is written.
+ *
+ * Long enough that a drag collapses into one or two writes instead of sixty a
+ * second, short enough that letting go feels like it took effect immediately.
+ * Only the write waits — the number on screen and the preview never do.
+ */
+const WRITE_DELAY_MS = 150;
+
+/** `1.65` on its own reads as nothing in a screen reader; this says what it is. */
+function lineHeightText(value: number): string {
+  return `${value.toFixed(2)} times the font size`;
+}
+
+/**
+ * The step is 0.05, and repeated float addition drifts (1.7000000000000002),
+ * which would leak into both the label and storage. Two decimals is the most
+ * the range can express.
+ */
+function roundLineHeight(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * The same four custom properties `Viewer.tsx` writes on the document shell.
+ * Duplicated rather than shared because the two live in different bundles and
+ * the mapping is one line each; VIEWER_CSS_VARS is the part that must not
+ * drift, and that is imported.
+ */
+function previewVars(reading: Reading): CSSProperties {
+  return {
+    [VIEWER_CSS_VARS.fontFamily]: FONT_STACKS[reading.fontFamily],
+    [VIEWER_CSS_VARS.fontSize]: `${reading.fontSize}px`,
+    [VIEWER_CSS_VARS.lineHeight]: String(reading.lineHeight),
+    [VIEWER_CSS_VARS.contentWidth]: CONTENT_WIDTH_CH[reading.contentWidth],
+  } as CSSProperties;
+}
 
 type Notice = { tone: 'ok' | 'info' | 'error'; text: string };
 
@@ -240,6 +313,52 @@ function Switch({
   );
 }
 
+/**
+ * A labelled range with its value beside it.
+ *
+ * The `<output>` is what carries the value visually; `aria-valuetext` carries
+ * it to a screen reader, because a range announces only the bare number and
+ * "16" or "1.65" says nothing about what it is.
+ */
+function Slider({
+  id,
+  value,
+  display,
+  valueText,
+  range,
+  onChange,
+}: {
+  id: string;
+  value: number;
+  display: string;
+  valueText: string;
+  range: { min: number; max: number; step: number };
+  onChange: (next: number) => void;
+}) {
+  return (
+    <div className="slider">
+      <input
+        id={id}
+        type="range"
+        min={range.min}
+        max={range.max}
+        step={range.step}
+        value={value}
+        aria-labelledby={`${id}-label`}
+        aria-valuetext={valueText}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      {/* Hidden from the accessibility tree on purpose: `<output>` is a live
+          region by default, so left exposed it would re-announce on every tick
+          of a drag — on top of the range's own aria-valuetext, which already
+          says the same thing. This copy is for eyes only. */}
+      <output className="slider-value" htmlFor={id} aria-hidden="true">
+        {display}
+      </output>
+    </div>
+  );
+}
+
 function App() {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [busy, setBusy] = useState<Busy>(null);
@@ -247,7 +366,16 @@ function App() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [copied, setCopied] = useState(false);
   const [theme, setTheme] = useState<Theme>(DEFAULT_SETTINGS.theme);
+  const [reading, setReading] = useState<Reading>(READING_DEFAULTS);
   const [app] = useState(readManifest);
+
+  /**
+   * A write that has been decided but not yet made, and the timer that will
+   * make it. Held in refs, not state: nothing on screen depends on them, and
+   * re-rendering mid-drag for a bookkeeping change would be pure waste.
+   */
+  const queued = useRef<Partial<Reading> | null>(null);
+  const writeTimer = useRef<number | null>(null);
 
   /** Last file-access value we acted on, so a flip to on syncs exactly once. */
   const lastFileAccess = useRef<boolean | null>(null);
@@ -269,6 +397,60 @@ function App() {
     setSection(null);
     setNotice(null);
   }, []);
+
+  /** Write whatever is queued right now, cancelling any pending timer. */
+  const flushReading = useCallback(() => {
+    if (writeTimer.current !== null) {
+      window.clearTimeout(writeTimer.current);
+      writeTimer.current = null;
+    }
+    const patch = queued.current;
+    queued.current = null;
+    if (!patch) return;
+    // Open documents and the popup restyle themselves off the storage change;
+    // a failed write shouldn't take the rest of the page down with it.
+    void saveSettings(patch).catch(() => undefined);
+  }, []);
+
+  /**
+   * Apply a reading setting. The screen updates synchronously in every case;
+   * `defer` only delays the storage write, and is used by the sliders, which
+   * fire an event for every pixel of a drag.
+   *
+   * Patches accumulate rather than replace, so dragging the size slider and
+   * then the line-height slider inside one window still writes both.
+   */
+  const applyReading = useCallback(
+    (patch: Partial<Reading>, defer = false) => {
+      setReading((prev) => ({ ...prev, ...patch }));
+      queued.current = { ...queued.current, ...patch };
+
+      if (!defer) {
+        flushReading();
+        return;
+      }
+      if (writeTimer.current !== null) window.clearTimeout(writeTimer.current);
+      writeTimer.current = window.setTimeout(flushReading, WRITE_DELAY_MS);
+    },
+    [flushReading],
+  );
+
+  const resetReading = () => {
+    applyReading(READING_DEFAULTS);
+    say('reading', 'ok', 'Reading settings are back to their defaults.');
+  };
+
+  // A queued write is lost if the page goes away first, and an options page is
+  // usually closed the instant the last slider is released. `pagehide` is the
+  // one event that still fires when the tab is closed or put in the bfcache.
+  useEffect(() => {
+    const onHide = () => flushReading();
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      flushReading();
+    };
+  }, [flushReading]);
 
   /**
    * Re-read every permission from the browser. Called on load, after each
@@ -330,11 +512,24 @@ function App() {
 
   useEffect(() => {
     void refresh().catch(() => setState({ kind: 'unavailable' }));
-    void loadSettings().then((settings) => setTheme(settings.theme));
+    void loadSettings().then((settings) => {
+      setTheme(settings.theme);
+      setReading(pickReading(settings));
+    });
   }, [refresh]);
 
-  // The popup writes the same setting, so mirror it rather than drift from it.
-  useEffect(() => onSettingsChanged((next) => setTheme(next.theme)), []);
+  // The popup writes the same settings, so mirror them rather than drift.
+  useEffect(
+    () =>
+      onSettingsChanged((next) => {
+        setTheme(next.theme);
+        // Our own debounced writes come back through this listener too. While
+        // one is still queued, storage is a step behind what is on screen, and
+        // adopting it would snap a slider back under the user's cursor.
+        if (queued.current === null) setReading(pickReading(next));
+      }),
+    [],
+  );
 
   // Match the page to the documents it renders. `auto` defers to the OS via
   // prefers-color-scheme; an explicit choice overrides it in both directions.
@@ -732,6 +927,197 @@ function App() {
                 </label>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* Reading ------------------------------------------------------ */}
+        <section className="card" aria-labelledby="reading-h">
+          <div className="card-head">
+            <h2 id="reading-h">Reading</h2>
+          </div>
+
+          <div className="row">
+            <div className="row-text">
+              <h3 className="row-title" id="font-label">
+                Font
+              </h3>
+              <p className="row-desc">
+                Fonts already on this computer. The extension never downloads
+                one, so nothing here reaches the network.
+              </p>
+            </div>
+
+            <div
+              className="segmented"
+              role="radiogroup"
+              aria-labelledby="font-label"
+            >
+              {FONT_FAMILY_OPTIONS.map(({ value, label }) => (
+                <label
+                  key={value}
+                  className={
+                    value === reading.fontFamily ? 'segment is-on' : 'segment'
+                  }
+                >
+                  <input
+                    type="radio"
+                    name="font-family"
+                    value={value}
+                    checked={value === reading.fontFamily}
+                    onChange={() =>
+                      applyReading({ fontFamily: value })
+                    }
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="row">
+            <div className="row-text">
+              <h3 className="row-title" id="font-size-label">
+                Font size
+              </h3>
+              <p className="row-desc">
+                The base size for body text. Headings, code and captions are
+                sized in proportion to it, so they all move together.
+              </p>
+            </div>
+
+            <Slider
+              id="font-size"
+              value={reading.fontSize}
+              display={`${reading.fontSize}px`}
+              valueText={`${reading.fontSize} pixels`}
+              range={FONT_SIZE_RANGE}
+              // Deferred: a drag fires this on every pixel of travel.
+              onChange={(next) => applyReading({ fontSize: next }, true)}
+            />
+          </div>
+
+          <div className="row">
+            <div className="row-text">
+              <h3 className="row-title" id="line-height-label">
+                Line height
+              </h3>
+              <p className="row-desc">
+                Space between lines, as a multiple of the font size. More helps
+                on long paragraphs; less fits more on screen.
+              </p>
+            </div>
+
+            <Slider
+              id="line-height"
+              value={reading.lineHeight}
+              display={reading.lineHeight.toFixed(2)}
+              valueText={lineHeightText(reading.lineHeight)}
+              range={LINE_HEIGHT_RANGE}
+              onChange={(next) =>
+                applyReading({ lineHeight: roundLineHeight(next) }, true)
+              }
+            />
+          </div>
+
+          <div className="row">
+            <div className="row-text">
+              <h3 className="row-title" id="content-width-label">
+                Content width
+              </h3>
+              <p className="row-desc">
+                How wide a line of text is allowed to get. Measured in
+                characters rather than pixels, so it stays the same length of
+                line whatever font size you pick. <strong>Full</strong> removes
+                the limit.
+              </p>
+            </div>
+
+            <div
+              className="segmented"
+              role="radiogroup"
+              aria-labelledby="content-width-label"
+            >
+              {CONTENT_WIDTH_OPTIONS.map(({ value, label }) => (
+                <label
+                  key={value}
+                  className={
+                    value === reading.contentWidth ? 'segment is-on' : 'segment'
+                  }
+                >
+                  <input
+                    type="radio"
+                    name="content-width"
+                    value={value}
+                    checked={value === reading.contentWidth}
+                    onChange={() =>
+                      applyReading({ contentWidth: value })
+                    }
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="row">
+            <div className="row-text">
+              <h3 className="row-title" id="toc-label">
+                Show table of contents
+              </h3>
+              <p className="row-desc" id="toc-desc">
+                A sidebar of the document's headings, which follows along as you
+                scroll. Documents with a single heading never show one, since an
+                outline of one entry is not navigation.
+              </p>
+            </div>
+
+            <Switch
+              on={reading.showToc}
+              busy={false}
+              disabled={false}
+              labelledBy="toc-label"
+              describedBy="toc-desc"
+              onChange={(next) => applyReading({ showToc: next })}
+            />
+          </div>
+
+          <div className="row row-stack">
+            <h3 className="row-title" id="preview-label">
+              Preview
+            </h3>
+            {/* Rendered from the same four custom properties as a real
+                document, so this is the actual result rather than an
+                impression of it. */}
+            <div
+              className="preview"
+              style={previewVars(reading)}
+              role="group"
+              aria-labelledby="preview-label"
+            >
+              <p className="preview-title">Notes on the estuary</p>
+              <p>
+                The tide runs out twice a day and leaves the whole channel bare,
+                a flat grey mile of it, stitched with the tracks of birds that
+                got there first.
+              </p>
+              <p>
+                Everything worth reading is somewhere in the middle of a long
+                paragraph, which is why a sample of one line tells you nothing
+                about whether a setting is comfortable to read.
+              </p>
+            </div>
+
+            <div className="actions">
+              <button
+                type="button"
+                className="btn btn-quiet"
+                onClick={resetReading}
+              >
+                Reset to defaults
+              </button>
+            </div>
+
+            <Message notice={noticeFor('reading')} />
           </div>
         </section>
 
