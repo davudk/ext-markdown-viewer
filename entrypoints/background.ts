@@ -1,4 +1,4 @@
-import { MARKDOWN_EXTENSIONS } from '@/lib/detect';
+import { expandOrigin, fileMatchPatterns, hasFileAccess } from '@/lib/permissions';
 import {
   RENDERER_CSS,
   RENDERER_JS,
@@ -13,36 +13,8 @@ import {
  */
 const SCRIPT_ID = 'markdown-auto';
 
-/** Splits a granted origin into scheme and host; both may be wildcards. */
-const ORIGIN_PATTERN = /^(\*|https?):\/\/([^/]+)\//;
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-/**
- * Turn one granted origin into per-extension match patterns.
- *
- * Registering the origin itself would run a ~400kB bundle on every page of
- * that site just to discover it isn't markdown, so the path glob does the
- * filtering up front. Scheme and host are copied verbatim, so an all-sites or
- * wildcard-subdomain grant stays exactly as wide as the user made it.
- */
-function expandOrigin(origin: string): string[] {
-  const match = ORIGIN_PATTERN.exec(origin);
-  if (!match) return [];
-
-  const [, scheme, host] = match;
-  return MARKDOWN_EXTENSIONS.map((ext) => `${scheme}://${host}/*${ext}`);
-}
-
-/** Optional across browsers and versions, so the call itself has to be guarded. */
-async function hasFileAccess(): Promise<boolean> {
-  try {
-    return (await chrome.extension?.isAllowedFileSchemeAccess?.()) ?? false;
-  } catch {
-    return false;
-  }
 }
 
 async function unregisterExisting(): Promise<void> {
@@ -74,7 +46,7 @@ async function syncRegistrations(): Promise<number> {
 
   // file:// is not an optional permission; it's a browser-level toggle.
   if (await hasFileAccess()) {
-    for (const ext of MARKDOWN_EXTENSIONS) matches.add(`file:///*${ext}`);
+    for (const pattern of fileMatchPatterns()) matches.add(pattern);
   }
 
   await unregisterExisting();
