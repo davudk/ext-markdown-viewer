@@ -23,13 +23,36 @@ import { CommandPalette } from './CommandPalette';
 import { Diff } from './Diff';
 import { Document } from './Document';
 import { ExportMenu } from './ExportMenu';
-import type { OpenedDocument } from './FolderBrowser';
 import { HeadingFold } from './HeadingFold';
 import { Lightbox } from './Lightbox';
-import { Presentation } from './Presentation';
 import { ReadingStatus } from './ReadingStatus';
 import { Search } from './Search';
-import { Sidebar } from './Sidebar';
+
+import type { OpenedDocument } from '@/plugins/files/types';
+
+/**
+ * The regions the shell publishes, because each follows from its own layout
+ * rather than from a feature.
+ *
+ * `shell.aside` is the leading flex track: `entrypoints/viewer.css` gives
+ * `.mdv-with-toc > nav` its width, stickiness and its stacking behaviour below
+ * 60rem, so whatever renders here is a column beside the document. It is named
+ * for where it is, never for what fills it — the sidebar is one plugin that
+ * happens to want a column.
+ *
+ * Nothing declared these before: `CORE_REGIONS` in lib/plugins/types.ts is a
+ * list, and the host only declares what a plugin `provides`. Until a plugin
+ * contributed UI, every core region was quietly inert.
+ */
+const SHELL_REGIONS = [
+  'shell.aside',
+  'chrome.top-start',
+  'chrome.top-end',
+  'chrome.bottom-start',
+  'chrome.bottom-end',
+  'document.before',
+  'document.after',
+] as const;
 
 /**
  * The viewer shell: layout, settings plumbing, and the state features share.
@@ -117,15 +140,35 @@ export function Viewer({
     documentHandle.update({
       body: window.document.querySelector<HTMLElement>('main.mdv-body'),
       source,
+      html: doc.html,
       headings: doc.headings,
       url,
       isRaw: showRaw,
     });
   }, [documentHandle, doc, source, url, showRaw]);
 
-  // Deliberately not gated on heading count any more: the sidebar also holds
-  // the Files tab, which is worth reaching from a document with no outline.
-  const hasSidebar = settings.showToc && !showRaw;
+  useShellRegions(plugins);
+
+  /**
+   * What the shell can do, offered to plugins as capabilities.
+   *
+   * The Files tab opens a document read through a directory handle, and asks
+   * for two files to be compared; both are shell state. The shell is not a
+   * plugin and has no `PluginContext`, so it publishes onto the host's store
+   * directly — a plugin `use`s them like any other capability, and finds them
+   * absent while this has not mounted, which is a state it already handles.
+   */
+  useEffect(() => {
+    const withdraw = [
+      plugins.capabilities.provide('document.open', (document: OpenedDocument) =>
+        setOpened(document),
+      ),
+      plugins.capabilities.provide('document.compare', (request: CompareRequest) =>
+        setCompare(request),
+      ),
+    ];
+    return () => withdraw.forEach((stop) => stop());
+  }, [plugins]);
 
   useScrollMemory({
     url,
@@ -146,30 +189,23 @@ export function Viewer({
   });
 
   useKeyboardShortcuts({
-    toggleToc: () => void saveSettings({ showToc: !settings.showToc }),
+    // Whether the sidebar exists is the sidebar plugin's enabled state and
+    // nothing else. The `showToc` setting it replaces is no longer read here.
+    toggleToc: () => void plugins.setEnabled('sidebar', !plugins.isEnabled('sidebar')),
     toggleRaw: () => setShowRaw((raw) => !raw),
     cycleTheme: () => void saveSettings({ theme: nextTheme(settings.theme) }),
   });
 
   return (
     <PluginProvider host={plugins}>
-      <div
-        className={hasSidebar ? 'mdv mdv-with-toc' : 'mdv'}
-        style={typographyVars(settings)}
-      >
+      {/* `mdv-with-toc` is added by whatever fills `shell.aside`: only the
+          column itself knows whether it is there. */}
+      <div className="mdv" style={typographyVars(settings)}>
         {/* Core regions: named for where they are, never for what fills them. */}
+        <Region name="shell.aside" />
         <Region name="chrome.top-start" />
         <Region name="chrome.top-end" />
         <Region name="document.before" />
-      {hasSidebar ? (
-        <Sidebar
-          headings={doc.headings}
-          documentUrl={url}
-          source={source}
-          onOpenDocument={setOpened}
-          onCompare={setCompare}
-        />
-      ) : null}
 
       <Document
         html={doc.html}
@@ -222,12 +258,6 @@ export function Viewer({
         onClose={() => setCompare(null)}
       />
 
-      <Presentation
-        html={doc.html}
-        split={settings.slideSplit}
-        enabled={settings.presentation && !showRaw}
-      />
-
         <Region name="document.after" />
         <Region name="chrome.bottom-start" />
         <Region name="chrome.bottom-end" />
@@ -235,6 +265,20 @@ export function Viewer({
       </div>
     </PluginProvider>
   );
+}
+
+/**
+ * Publishes the shell's regions for the life of the shell.
+ *
+ * Declared during the first render rather than from an effect: `<Region>` reads
+ * the registry as it renders, so declaring afterwards would cost a second pass
+ * and one frame with no sidebar in it.
+ */
+function useShellRegions(host: PluginHost): void {
+  const [withdraw] = useState(() =>
+    SHELL_REGIONS.map((region) => host.regions.declare(region)),
+  );
+  useEffect(() => () => withdraw.forEach((stop) => stop()), [withdraw]);
 }
 
 /** Last path segment, for naming the document on screen in the diff header. */

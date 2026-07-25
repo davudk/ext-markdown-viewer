@@ -4,6 +4,7 @@ import { Viewer } from '@/components/Viewer';
 import { VIEWER_ROOT_ID, VIEWER_THEME_DATASET_KEY } from '@/lib/config';
 import { isCandidateUrl, isMarkdownContentType } from '@/lib/detect';
 import {
+  CORE_REGIONS,
   PLUGINS,
   PluginHost,
   SharedDocument,
@@ -76,6 +77,13 @@ export default defineUnlistedScript(() => {
         storage: chromeStorage(),
         document: documentHandle,
       });
+
+      // The shell publishes the regions that follow from its own layout, before
+      // anything can contribute to them — a contribution to a region nobody has
+      // declared is inert, which is correct for a disabled sidebar and wrong
+      // for a corner the shell renders unconditionally.
+      for (const region of CORE_REGIONS) plugins.regions.declare(region);
+
       await plugins.start();
 
       // React 19 commits asynchronously by default; flushSync makes the markup

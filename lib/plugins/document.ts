@@ -8,11 +8,21 @@
  */
 
 import type { Heading } from '@/lib/markdown';
+import { Store } from './registry.ts';
 import type { DocumentHandle, Teardown } from './types.ts';
 
 export interface DocumentState {
   body: HTMLElement | null;
   source: string;
+  /**
+   * The rendered HTML, before any plugin enhanced it.
+   *
+   * Carried because `body` is post-enhancement — it has copy buttons and anchor
+   * links grafted in — and `source` is markdown. A plugin needing the document
+   * as markup would otherwise reparse the whole thing, which the presentation
+   * pilot was doing on every open.
+   */
+  html: string;
   headings: readonly Heading[];
   url: string;
   isRaw: boolean;
@@ -24,10 +34,21 @@ export class SharedDocument implements DocumentHandle {
   private state: DocumentState = {
     body: null,
     source: '',
+    html: '',
     headings: [],
     url: '',
     isRaw: false,
   };
+
+  /**
+   * Bumped on every update, so React can subscribe.
+   *
+   * Found by the presentation pilot: `useDocument()` watched the host's status
+   * store, which only tracks enable/disable, so the documented pattern — a
+   * contribution reading `isRaw` and returning null — never re-rendered on a
+   * raw toggle.
+   */
+  readonly version = new Store(0);
 
   private readonly passes = new Set<Pass>();
   /** What each pass last returned, so a re-run undoes the previous one first. */
@@ -40,6 +61,9 @@ export class SharedDocument implements DocumentHandle {
   }
   get source() {
     return this.state.source;
+  }
+  get html() {
+    return this.state.html;
   }
   get headings() {
     return this.state.headings;
@@ -61,15 +85,20 @@ export class SharedDocument implements DocumentHandle {
     // longer exists.
     if (bodyChanged) this.undo.clear();
 
+    this.version.set(this.version.get() + 1);
     this.schedule();
     if (next.body) for (const watcher of this.watchers) watcher(next.body);
   }
 
-  onChange(fn: (body: HTMLElement) => void): Teardown {
+  // Arrow properties, not methods: these get passed to `useSyncExternalStore`,
+  // which calls them unbound.
+  onChange = (fn: (body: HTMLElement) => void): Teardown => {
     this.watchers.add(fn);
     if (this.state.body) fn(this.state.body);
-    return () => this.watchers.delete(fn);
-  }
+    return () => {
+      this.watchers.delete(fn);
+    };
+  };
 
   enhance(pass: Pass): Teardown {
     this.passes.add(pass);

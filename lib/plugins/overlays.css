@@ -1,0 +1,63 @@
+/*
+ * The overlay layer.
+ *
+ * This exists because the host was assigning `z-index: 1000 + index` to
+ * statically-positioned elements, where z-index does nothing — so plugins were
+ * still picking their own stacking, which is the problem the overlay manager
+ * was built to remove. Positioning belongs here, once, for every overlay.
+ *
+ * The layer is portalled onto <body>, outside `#mdv-root`, so none of
+ * viewer.css's root-scoped rules reach it and the few that matter are restated.
+ */
+
+.mdv-overlays {
+  position: fixed;
+  inset: 0;
+  /* The layer itself is not a surface: it must not swallow clicks meant for the
+     document while no overlay is open. Each surface re-enables its own. */
+  pointer-events: none;
+  /* Above every in-document affordance. Individual overlays stack within this
+     by the inline z-index the host assigns, so nothing else picks a number. */
+  z-index: 2147483000;
+}
+
+.mdv-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  box-sizing: border-box;
+}
+
+.mdv-overlay *,
+.mdv-overlay *::before,
+.mdv-overlay *::after {
+  box-sizing: inherit;
+}
+
+/* Restated rather than inherited: the layer sits outside `#mdv-root`, which is
+   where viewer.css scopes these. */
+.mdv-overlay :focus-visible {
+  outline: 2px solid var(--mdv-accent, #4493f8);
+  outline-offset: 2px;
+}
+
+.mdv-overlay:focus {
+  /* The surface takes focus only when an overlay brings nothing focusable of
+     its own; it should never draw a ring for it. */
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-overlay,
+  .mdv-overlay * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* An overlay is screen furniture; printing should show the document. */
+@media print {
+  .mdv-overlays {
+    display: none !important;
+  }
+}

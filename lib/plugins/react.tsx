@@ -10,6 +10,7 @@
 
 import {
   Component,
+  Fragment,
   createContext,
   useContext,
   useEffect,
@@ -20,6 +21,8 @@ import {
 import { createPortal } from 'react-dom';
 
 import type { PluginHost } from './host.ts';
+
+import './overlays.css';
 import type { PlacedContribution } from './registry.ts';
 import type {
   DocumentHandle,
@@ -32,6 +35,22 @@ import type {
 
 const HostContext = createContext<PluginHost | null>(null);
 const PluginScope = createContext<PluginContext | null>(null);
+
+/**
+ * Whatever a region's owner passes down to its contributions.
+ *
+ * The sidebar pilot needed to tell each tab "are you the visible one", "your
+ * chord opened you, take focus", and "here are your aria ids" — and with no
+ * route for it, outline/files/search ended up importing a React context out of
+ * the sidebar plugin. A plugin importing another plugin is the one thing the
+ * API forbids, so the route exists now.
+ */
+const RegionScope = createContext<unknown>(undefined);
+
+/** The value the surrounding region's owner passed down. */
+export function useRegionScope<T>(): T | undefined {
+  return useContext(RegionScope) as T | undefined;
+}
 
 export function PluginProvider({
   host,
@@ -64,11 +83,28 @@ export function usePluginSettings<S extends SettingsSchema>(): SettingsOf<S> {
   return ctx.settings;
 }
 
+/**
+ * The shared document, re-rendering whenever it changes.
+ *
+ * Subscribes to the document's own version rather than the host's status store,
+ * which only tracks enable/disable — the presentation pilot found that a
+ * contribution reading `isRaw` never re-rendered on a raw toggle.
+ */
 export function useDocument(): DocumentHandle {
   const host = usePluginHost();
-  useSyncExternalStore(host.status.subscribe, () => host.status.get());
-  return host.documentHandle;
+  const handle = host.documentHandle as DocumentHandle & {
+    version?: { subscribe: (fn: () => void) => () => void; get: () => number };
+  };
+
+  useSyncExternalStore(
+    handle.version?.subscribe ?? noopSubscribe,
+    () => handle.version?.get() ?? 0,
+  );
+
+  return handle;
 }
+
+const noopSubscribe = () => () => {};
 
 /* -------------------------------------------------------------------------- */
 /* Error isolation                                                             */
@@ -140,8 +176,20 @@ function Contribution({ entry }: { entry: PlacedContribution }) {
 /**
  * A named mount point. Renders nothing when the region was never declared,
  * which is the normal state for a tab whose owning surface is disabled.
+ *
+ * `scope` is handed to every contribution; `wrap` lets the owner put each one
+ * in its own container — a `role="tabpanel"` with the right aria ids, say —
+ * which the flat list could not express.
  */
-export function Region({ name }: { name: RegionName }) {
+export function Region<T>({
+  name,
+  scope,
+  wrap,
+}: {
+  name: RegionName;
+  scope?: T;
+  wrap?: (entry: PlacedContribution, body: ReactNode) => ReactNode;
+}) {
   const host = usePluginHost();
   useSyncExternalStore(host.regions.store.subscribe, () => host.regions.store.get());
 
@@ -149,12 +197,30 @@ export function Region({ name }: { name: RegionName }) {
   if (entries.length === 0) return null;
 
   return (
-    <>
-      {entries.map((entry) => (
-        <Contribution key={`${entry.pluginId}:${entry.key}`} entry={entry} />
-      ))}
-    </>
+    <RegionScope.Provider value={scope}>
+      {entries.map((entry) => {
+        const key = `${entry.pluginId}:${entry.key}`;
+        const body = <Contribution entry={entry} />;
+        return (
+          <Fragment key={key}>{wrap ? wrap(entry, body) : body}</Fragment>
+        );
+      })}
+    </RegionScope.Provider>
   );
+}
+
+/**
+ * What a region currently holds, without rendering it.
+ *
+ * For an owner that must decide layout — `.mdv-with-toc` lives on the shell,
+ * a level above anything a contribution can reach, so the sidebar was climbing
+ * the DOM with `closest()` to set it. Also the route to a contribution's `meta`,
+ * which a tab strip needs before its panel renders.
+ */
+export function useRegionContents(name: RegionName): readonly PlacedContribution[] {
+  const host = usePluginHost();
+  useSyncExternalStore(host.regions.store.subscribe, () => host.regions.store.get());
+  return host.regions.for(name);
 }
 
 /* -------------------------------------------------------------------------- */

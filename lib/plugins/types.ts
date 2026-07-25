@@ -98,6 +98,8 @@ export type SettingsOf<S extends SettingsSchema> = {
 export interface DocumentHandle {
   readonly body: HTMLElement | null;
   readonly source: string;
+  /** The rendered HTML, before plugins enhanced it. See `SharedDocument`. */
+  readonly html: string;
   readonly headings: readonly Heading[];
   readonly url: string;
   readonly isRaw: boolean;
@@ -142,6 +144,15 @@ export interface DocumentHandle {
 export type RegionName = string;
 
 export const CORE_REGIONS = [
+  /**
+   * The shell's own column, beside the document.
+   *
+   * Added after the sidebar pilot: a sidebar is neither floating chrome nor
+   * something inside the document column, and with no region for it the plugin
+   * had nowhere legitimate to render. It follows from `.mdv`'s flex row, which
+   * is the shell's layout, so the shell publishes it.
+   */
+  'shell.aside',
   'chrome.top-start',
   'chrome.top-end',
   'chrome.bottom-start',
@@ -151,13 +162,23 @@ export const CORE_REGIONS = [
   'settings.section',
 ] as const;
 
-export interface UiContribution {
+export interface UiContribution<M = unknown> {
   region: RegionName;
   /** Stable within the plugin: the React key and the debugging handle. */
   key: string;
   /** Lower renders first. Defaults to 100; ties break by registry order. */
   order?: number;
   component: ComponentType;
+  /**
+   * Data the region's owner needs *before* rendering the component — a tab's
+   * label, an icon, a group name.
+   *
+   * Declared because the sidebar pilot needed exactly this and hung a `label`
+   * on the contribution object, which survived only because the registry
+   * happened to spread it. Depending on that accident is worse than saying so.
+   * The host preserves `meta` and never inspects it.
+   */
+  meta?: M;
 }
 
 export interface OverlayOptions {
@@ -182,6 +203,13 @@ export interface UiHost {
    * trap. Overlays opened from overlays nest and unwind in order.
    */
   openOverlay(options: OverlayOptions): OverlayHandle;
+
+  /**
+   * Whether this plugin already has an overlay of that id open. `openOverlay`
+   * is idempotent per id, so this is for deciding what a control should *say*,
+   * not for guarding the call.
+   */
+  isOverlayOpen(id: string): boolean;
 
   /**
    * Imperative mount, for DOM code that is not React (the add-ons). The
@@ -215,6 +243,8 @@ export interface ShortcutRegistry {
     key: string;
     ctrlOrMeta?: boolean;
     shift?: boolean;
+    /** Fire even while the reader is typing. Off by default. */
+    whileTyping?: boolean;
     run: (event: KeyboardEvent) => void;
   }): Teardown;
 }

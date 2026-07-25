@@ -3,11 +3,11 @@
    Two things are styled here: the launcher parked in a corner of a rendered
    document, and the full-screen deck that opens from it.
 
-   Both are rendered through a portal onto <body>, which means they are
-   *outside* `#mdv-root`. Several rules in entrypoints/viewer.css are scoped to
-   that root — the box-sizing reset, the focus ring, the reduced-motion
-   override, the print strip — and none of them reach a portal. Each one is
-   restated below, as lightbox.css already does for the same reason.
+   The deck is rendered by the host's overlay layer, which portals onto <body>,
+   so it is *outside* `#mdv-root`. Several rules in entrypoints/viewer.css are
+   scoped to that root — the box-sizing reset, the focus ring, the
+   reduced-motion override, the print strip — and none of them reach a portal.
+   Each one is restated below, as lightbox.css already does for the same reason.
 
    The slide body deliberately carries the `mdv-body` class, so every document
    rule in viewer.css — headings, lists, code, tables, blockquotes, the
@@ -21,10 +21,11 @@
 /* ==========================================================================
    1. Launcher
 
-   Bottom right, opposite the document toolbar, and muted until approached so
-   it reads as chrome rather than as content. The inset is a custom property so
-   that another piece of fixed chrome arriving in the same corner can be moved
-   out of its way in one declaration.
+   Contributed to `chrome.bottom-end`, which names the corner but does not lay
+   it out — a region is a mount point, so a floating control still positions
+   itself. Muted until approached, so it reads as chrome rather than content.
+   The inset is a custom property so that another piece of fixed chrome
+   arriving in the same corner can be moved out of its way in one declaration.
    ========================================================================== */
 
 .mdv-present-launch {
@@ -65,15 +66,23 @@
 /* ==========================================================================
    2. Overlay shell
 
-   Opaque and at the top of the stacking order. It sits below the lightbox's
-   own z-index on purpose — if an image viewer does somehow open over a deck,
-   being able to see it is better than a dialog trapped behind an overlay.
+   Opaque, and the only surface the reader can reach: the host inerts
+   everything beneath a modal overlay.
+
+   The one number here is not the old hand-picked z-index and is not permanent.
+   The overlay layer sets a z-index per stack position, but it sets it on a
+   statically positioned wrapper, where it has no effect — and the shell's
+   remaining hand-wired chrome still paints at 20, 30, 40 and 60. This clears
+   all of them and stays below the lightbox's own 2147483000, which is where
+   the deck sat before: if an image viewer does somehow open over a deck, being
+   able to see it beats a dialog trapped behind an overlay. It goes when the
+   overlay layer carries a stylesheet of its own.
    ========================================================================== */
 
 .mdv-present {
   position: fixed;
   inset: 0;
-  z-index: 2147482000;
+  z-index: 100;
   display: flex;
 
   /* `--mdv-font-body` is written inline on `.mdv` and is therefore invisible
@@ -98,12 +107,6 @@
   outline: 2px solid var(--mdv-accent);
   outline-offset: 2px;
   border-radius: var(--mdv-radius-sm);
-}
-
-/* Focus lands here on open, and it is a surface rather than a control — the
-   ring would read as "this box is selected". */
-.mdv-present-dialog:focus {
-  outline: none;
 }
 
 .mdv-present-dialog {

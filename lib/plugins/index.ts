@@ -11,10 +11,47 @@
  */
 
 import { externalLinksPlugin } from '@/plugins/external-links';
+import { filesPlugin } from '@/plugins/files';
+import { outlinePlugin } from '@/plugins/outline';
+import { presentationPlugin } from '@/plugins/presentation';
+import { searchPanelPlugin } from '@/plugins/search-panel';
+import { sidebarPlugin } from '@/plugins/sidebar';
 
 import type { AnyPlugin } from './types.ts';
 
-export const PLUGINS: readonly AnyPlugin[] = [externalLinksPlugin];
+import type { CompareRequest } from '@/lib/diff';
+import type { OpenedDocument } from '@/plugins/files/types';
+
+/**
+ * The array is load order, never render order: what a contribution renders
+ * before or after is its `order`, and the sidebar's tabs read the same however
+ * this list is sorted.
+ */
+export const PLUGINS: readonly AnyPlugin[] = [
+  externalLinksPlugin,
+  presentationPlugin,
+  sidebarPlugin,
+  outlinePlugin,
+  filesPlugin,
+  searchPanelPlugin,
+];
+
+/**
+ * What the shell can do on a plugin's behalf.
+ *
+ * Both of these are the shell's, not a plugin's: opening a file read through a
+ * directory handle swaps the rendered document, and comparing two files opens
+ * the diff overlay — state that lives in `Viewer.tsx`. The shell is not a
+ * plugin and has no `PluginContext`, so it publishes them straight onto the
+ * host's capability store; a plugin uses them exactly like any other, and both
+ * are legitimately absent before the shell has mounted.
+ */
+declare module './types.ts' {
+  interface Capabilities {
+    'document.open': (document: OpenedDocument) => void;
+    'document.compare': (request: CompareRequest) => void;
+  }
+}
 
 export { PluginHost, type HostStorage } from './host.ts';
 export { SharedDocument } from './document.ts';

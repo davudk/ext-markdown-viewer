@@ -15,9 +15,9 @@ import {
   publishFolder,
   type FuzzyField,
   type PaletteFile,
-} from '@/lib/commands';
-import { CONTEXT_MENU_KEYS, FILTER_RESULT_LIMIT } from '@/lib/config';
-import type { CompareRequest } from '@/lib/diff';
+} from '../../lib/commands.ts';
+import { CONTEXT_MENU_KEYS, FILTER_RESULT_LIMIT } from '../../lib/config.ts';
+import type { CompareRequest } from '../../lib/diff.ts';
 import {
   fileUrlFor,
   folderDocumentPath,
@@ -35,9 +35,20 @@ import {
   forgetFolder,
   type DirectoryListing,
   type FolderEntry,
-} from '@/lib/folder';
+} from '../../lib/folder.ts';
 
-import { FilterBox, useFuzzy } from './CommandPalette';
+import { FilterBox, useFuzzy } from '../../components/CommandPalette.tsx';
+// The surface this tab contributes to: the panel wrapper, the "are you showing"
+// answer, and the two hooks the host does not provide.
+import {
+  SidebarPanel,
+  useCapability,
+  useLiveDocument,
+  useSidebarTab,
+} from '../sidebar/context.tsx';
+
+import { FILES_TAB } from './plugin.ts';
+import type { FolderStatus, OpenedDocument } from './types.ts';
 
 import './folder-browser.css';
 
@@ -52,24 +63,55 @@ const FILTER_FIELDS: readonly FuzzyField[] = [
   { name: 'path', weight: 0.4 },
 ];
 
-/** What the tab strip is told, so it can say why the tab is empty. */
-export type FolderStatus = 'unsupported' | 'idle' | 'ready';
-
 /**
- * A file the reader opened through a handle rather than by address.
+ * The tab, as the sidebar sees it.
  *
- * `url` is the synthetic `mdv-folder:` identity from `lib/folder.ts` — it is
- * what scroll memory keys on and what live reload declines, and it is never a
- * place anything tries to go.
+ * Everything the shell used to thread down as props is picked up here: the
+ * document from the shared handle, "are you showing" from the surface, and the
+ * two things that have to travel *back* to the shell — opening a file and
+ * comparing one — as capabilities. Both are legitimately absent: the shell that
+ * publishes them is not a plugin and may not have got there yet, and
+ * `onCompare` was already optional because a tree with nowhere to send a
+ * compare request leaves the browser's own context menu alone.
  */
-export interface OpenedDocument {
-  url: string;
-  /** Basename, for a title. */
-  name: string;
-  /** Path relative to the folder root. */
-  path: string;
-  source: string;
+export function FilesTab() {
+  const { visible, report } = useSidebarTab(FILES_TAB.key);
+  const rendered = useLiveDocument();
+  const open = useCapability('document.open');
+  const compare = useCapability('document.compare');
+  const published = useCapability('files.status');
+
+  const onStatusChange = useCallback(
+    (status: FolderStatus) => {
+      published?.set(status);
+      report({
+        hint:
+          status === 'unsupported'
+            ? 'This browser cannot open local folders.'
+            : status === 'idle'
+              ? 'No folder is open.'
+              : null,
+        blocked: status === 'unsupported',
+      });
+    },
+    [published, report],
+  );
+
+  return (
+    <SidebarPanel tab={FILES_TAB.key}>
+      <FolderBrowser
+        documentUrl={rendered.url}
+        source={rendered.source}
+        visible={visible}
+        onOpen={open ?? noop}
+        onCompare={compare}
+        onStatusChange={onStatusChange}
+      />
+    </SidebarPanel>
+  );
 }
+
+function noop() {}
 
 /** A row in the flattened tree. Depth is carried, not implied by nesting. */
 interface Row {

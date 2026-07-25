@@ -25,7 +25,7 @@ import type { Heading } from '@/lib/markdown';
 import type { DetailedMatch, SearchOptions } from '@/lib/search';
 import { isFailure, searchClient } from '@/lib/search-client';
 
-import type { FolderStatus, OpenedDocument } from './FolderBrowser';
+import type { FolderStatus, OpenedDocument } from '@/plugins/files/types';
 
 import './search-panel.css';
 
@@ -127,7 +127,7 @@ async function* walkFolder(
  * `TOC_LEVELS` and so has no entry in `headings` at all — still lands in the
  * right chapter rather than nowhere.
  */
-function headingElementFor(headings: Heading[], breadcrumb: string[]): HTMLElement | null {
+function headingElementFor(headings: readonly Heading[], breadcrumb: string[]): HTMLElement | null {
   for (let index = breadcrumb.length - 1; index >= 0; index -= 1) {
     const wanted = breadcrumb[index];
     const heading = headings.find((entry) => entry.text === wanted);
@@ -203,7 +203,7 @@ export interface SearchPanelProps {
   /** The markdown on screen. What the panel searches, and where lines come from. */
   source: string;
   /** The rendered outline, used only to get from a result back to the document. */
-  headings: Heading[];
+  headings: readonly Heading[];
   /** Whether this panel is the one showing. Nothing runs while it is not. */
   visible: boolean;
   /** Whether the Files tab has a folder open, which is what enables cross-file. */

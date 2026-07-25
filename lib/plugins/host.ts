@@ -22,6 +22,7 @@ import {
 } from './registry.ts';
 import { defaultsFor, normalize, resolve, type StoredSettings } from './settings.ts';
 import {
+  CORE_REGIONS,
   PLUGIN_API_VERSION,
   type AnyPlugin,
   type DocumentHandle,
@@ -123,6 +124,12 @@ export class PluginHost {
   }
 
   async start(): Promise<void> {
+    // The shell's own regions. Declared here rather than by whoever renders
+    // them: a `<Region>` for an undeclared name renders nothing, so both pilots
+    // independently discovered their contributions were invisible and patched
+    // it in two different files.
+    for (const region of CORE_REGIONS) this.regions.declare(region);
+
     this.stored = normalize(await this.options.storage.read().catch(() => null));
 
     for (const plugin of this.plugins) {
@@ -319,6 +326,7 @@ export class PluginHost {
             },
           };
         },
+        isOverlayOpen: (id) => host.overlays.isIdOpen(plugin.id, id),
         mount: (region, render) => {
           const contribution = {
             region,

@@ -33,6 +33,7 @@ function memoryStorage(): HostStorage & { value: unknown } {
 const stubDocument: DocumentHandle = {
   body: null,
   source: '',
+  html: '',
   headings: [],
   url: 'https://example.test/a.md',
   isRaw: false,
@@ -423,7 +424,7 @@ test('an enhancement pass runs, and its teardown undoes it before each re-run', 
   });
 
   // No requestAnimationFrame under the bare test runner, so passes run inline.
-  doc.update({ body, source: '', headings: [], url: 'u', isRaw: false });
+  doc.update({ body, source: '', html: '', headings: [], url: 'u', isRaw: false });
   assert.deepEqual(log, ['run']);
 
   doc.refresh();
@@ -436,7 +437,7 @@ test('removing a pass undoes it', () => {
   const log: string[] = [];
 
   const stop = doc.enhance(() => () => log.push('undo'));
-  doc.update({ body, source: '', headings: [], url: 'u', isRaw: false });
+  doc.update({ body, source: '', html: '', headings: [], url: 'u', isRaw: false });
   stop();
 
   assert.deepEqual(log, ['undo']);
@@ -449,10 +450,10 @@ test('a new body drops stale teardowns instead of running them', () => {
   const log: string[] = [];
 
   doc.enhance(() => () => log.push('undo'));
-  doc.update({ body: {} as HTMLElement, source: '', headings: [], url: 'u', isRaw: false });
+  doc.update({ body: {} as HTMLElement, source: '', html: '', headings: [], url: 'u', isRaw: false });
   log.length = 0;
 
-  doc.update({ body: {} as HTMLElement, source: '', headings: [], url: 'u', isRaw: false });
+  doc.update({ body: {} as HTMLElement, source: '', html: '', headings: [], url: 'u', isRaw: false });
   assert.deepEqual(log, [], 'a teardown ran against a detached body');
 });
 
@@ -467,7 +468,7 @@ test('one pass throwing does not stop the others', () => {
       throw new Error('boom');
     });
     doc.enhance(() => void ran.push('second'));
-    doc.update({ body: {} as HTMLElement, source: '', headings: [], url: 'u', isRaw: false });
+    doc.update({ body: {} as HTMLElement, source: '', html: '', headings: [], url: 'u', isRaw: false });
   } finally {
     console.error = original;
   }

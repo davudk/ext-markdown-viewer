@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEvent } from 'react';
 
-import { createMatcher, type FuzzyField } from '@/lib/commands';
-import { FILTER_RESULT_LIMIT } from '@/lib/config';
-import type { Heading } from '@/lib/markdown';
+import { createMatcher, type FuzzyField } from '../../lib/commands.ts';
+import { FILTER_RESULT_LIMIT } from '../../lib/config.ts';
+import type { Heading } from '../../lib/markdown.ts';
 
-import { FilterBox, useFuzzy } from './CommandPalette';
+import { FilterBox, useFuzzy } from '../../components/CommandPalette.tsx';
+// The surface this tab contributes to, for the panel wrapper and the "are you
+// showing" answer a region cannot pass as a prop. See plugins/sidebar/context.
+import {
+  SidebarPanel,
+  useLiveDocument,
+  useSidebarTab,
+} from '../sidebar/context.tsx';
+
+import { OUTLINE_TAB } from './plugin.ts';
 
 import './toc.css';
 
@@ -46,11 +55,37 @@ interface TocNode {
 const FILTER_FIELDS: readonly FuzzyField[] = [{ name: 'title', weight: 1 }];
 
 /**
+ * The tab, as the sidebar sees it.
+ *
+ * A contribution takes no props, so everything `Sidebar.tsx` used to pass down
+ * is picked up here instead: the headings from the shared document, and
+ * whether this tab is the one showing from the surface it contributes to. The
+ * hint the strip shows on an empty tab is reported back the same way — the
+ * panel is the only thing that knows whether it has anything in it, and it
+ * stays mounted while hidden precisely so it can keep saying so.
+ */
+export function OutlineTab() {
+  const { visible, report } = useSidebarTab(OUTLINE_TAB.key);
+  const rendered = useLiveDocument();
+  const headings = rendered.headings;
+
+  useEffect(() => {
+    report({ hint: headings.length === 0 ? 'This document has no headings.' : null });
+  }, [report, headings.length]);
+
+  return (
+    <SidebarPanel tab={OUTLINE_TAB.key}>
+      <Toc headings={headings} visible={visible} />
+    </SidebarPanel>
+  );
+}
+
+/**
  * The outline panel: the document's headings, scroll-spy, and jump-to-heading.
  *
- * A panel rather than a sidebar — `Sidebar.tsx` owns the `<nav>`, the collapse
- * toggle and the tab strip, and this renders inside one tab of it. Everything
- * that is about *headings* stayed here; everything that was about *the sidebar*
+ * A panel rather than a sidebar — the sidebar plugin owns the `<nav>`, the
+ * collapse toggle and the tab strip, and this renders inside one tab of it.
+ * Everything that is about *headings* stayed here; everything about *the sidebar*
  * moved out. The one thing that crossed the line is `visible`: the follow-the-
  * active-entry scroll below has to know whether anyone can see it, which used
  * to be the local `expanded` state and is now a prop. It defaults to true, so
@@ -65,7 +100,7 @@ export function Toc({
   headings,
   visible = true,
 }: {
-  headings: Heading[];
+  headings: readonly Heading[];
   visible?: boolean;
 }) {
   const activeId = useActiveHeading(headings);
@@ -305,7 +340,7 @@ function TocList({
  * and becomes a root when there is none. That keeps every heading — dropping
  * one would leave a section of the document unreachable from the sidebar.
  */
-function buildTree(headings: Heading[]): TocNode[] {
+function buildTree(headings: readonly Heading[]): TocNode[] {
   const roots: TocNode[] = [];
   const ancestors: TocNode[] = [];
 
@@ -359,7 +394,7 @@ function buildTree(headings: Heading[]): TocNode[] {
  * the page moves, and keeping them attached means switching back to the outline
  * shows where the reader is now rather than where they were when they left.
  */
-function useActiveHeading(headings: Heading[]): string | null {
+function useActiveHeading(headings: readonly Heading[]): string | null {
   const [activeId, setActiveId] = useState<string | null>(null);
 
   useEffect(() => {

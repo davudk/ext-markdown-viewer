@@ -69,6 +69,7 @@ test('the plugin marks external links and only external links', async () => {
   shared.update({
     body,
     source: '',
+    html: '',
     headings: [],
     url: 'https://example.test/docs/a.md',
     isRaw: false,
@@ -95,6 +96,7 @@ test('disabling the plugin removes every mark it made', async () => {
   shared.update({
     body,
     source: '',
+    html: '',
     headings: [],
     url: 'https://example.test/docs/a.md',
     isRaw: false,
@@ -125,6 +127,7 @@ test('toggling repeatedly neither duplicates nor strands marks', async () => {
   shared.update({
     body,
     source: '',
+    html: '',
     headings: [],
     url: 'https://example.test/docs/a.md',
     isRaw: false,
@@ -160,6 +163,7 @@ test('a disabled plugin does not touch the document at all', async () => {
   shared.update({
     body,
     source: '',
+    html: '',
     headings: [],
     url: 'https://example.test/docs/a.md',
     isRaw: false,

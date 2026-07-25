@@ -235,21 +235,13 @@ export const FOLD_LEVELS = [1, 2, 3, 4, 5, 6];
 /* -------------------------------------------------------------------------- */
 
 /**
- * The sidebar's tabs, in the order they are presented.
+ * The tabs themselves are gone from here.
  *
- * Only the identity and the label live here; `Sidebar.tsx` maps each id to the
- * component that draws it. Adding a tab is an entry here plus a line in that
- * map — which is exactly what the third one, Search, turned out to cost.
+ * They were an id and a label in this file plus a row in `Sidebar.tsx`'s
+ * `PANELS` map, and a tab is now a plugin contributing to `sidebar.tab` — so
+ * neither this module nor the sidebar knows how many there are. Only the
+ * storage key stayed, because it is a key.
  */
-export const SIDEBAR_TABS = [
-  { id: 'outline', label: 'Outline' },
-  { id: 'files', label: 'Files' },
-  { id: 'search', label: 'Search' },
-] as const;
-
-export type SidebarTabId = (typeof SIDEBAR_TABS)[number]['id'];
-
-export const DEFAULT_SIDEBAR_TAB: SidebarTabId = 'outline';
 
 /** Sidebar UI state (which tab is open), kept out of `Settings` — it is not a preference. */
 export const SIDEBAR_STATE_KEY = 'sidebar';

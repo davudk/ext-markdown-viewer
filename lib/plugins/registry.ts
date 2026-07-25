@@ -59,15 +59,28 @@ export interface PlacedContribution extends UiContribution {
 
 export class RegionRegistry {
   readonly store = new Store<readonly PlacedContribution[]>([]);
-  private declared = new Set<RegionName>();
+  /**
+   * Counted, not a set: the shell declares the core regions and a plugin may
+   * declare the same name. Without counting, whichever teardown ran first would
+   * undeclare the region out from under the other — found by both pilots.
+   */
+  private declared = new Map<RegionName, number>();
   private sequence = 0;
 
   /** Publishes a region so contributions to it become renderable. */
   declare(name: RegionName): Teardown {
-    this.declared.add(name);
+    this.declared.set(name, (this.declared.get(name) ?? 0) + 1);
     this.store.set([...this.store.get()]);
+
+    let released = false;
     return () => {
-      this.declared.delete(name);
+      // Guarded: a teardown run twice must not decrement someone else's claim.
+      if (released) return;
+      released = true;
+
+      const count = (this.declared.get(name) ?? 1) - 1;
+      if (count <= 0) this.declared.delete(name);
+      else this.declared.set(name, count);
       this.store.set([...this.store.get()]);
     };
   }
@@ -128,7 +141,22 @@ export class OverlayRegistry {
   readonly store = new Store<readonly OpenOverlay[]>([]);
   private nextId = 0;
 
+  /** True when this plugin already has an overlay of that id open. */
+  isIdOpen(pluginId: string, id: string): boolean {
+    return this.store.get().some((o) => o.pluginId === pluginId && o.id === id);
+  }
+
   open(pluginId: string, options: OverlayOptions): { instanceId: number; close: () => void } {
+    // Idempotent per id: a shortcut pressed twice must not stack two decks, and
+    // making every plugin guard that itself is how they all end up with one.
+    const existing = this.store
+      .get()
+      .find((o) => o.pluginId === pluginId && o.id === options.id);
+    if (existing) {
+      const known = existing.instanceId;
+      return { instanceId: known, close: () => this.close(known) };
+    }
+
     const instanceId = this.nextId++;
     const entry: OpenOverlay = { ...options, pluginId, instanceId };
     this.store.set([...this.store.get(), entry]);
@@ -226,7 +254,20 @@ interface Binding {
   key: string;
   ctrlOrMeta?: boolean;
   shift?: boolean;
+  /**
+   * Fire even while the reader is typing. Off by default: an unmodified key
+   * that opens a surface mid-word is a bug, and the presentation pilot had to
+   * copy the shell's private guard to avoid it — so it belongs here instead.
+   */
+  whileTyping?: boolean;
   run: (event: KeyboardEvent) => void;
+}
+
+/** Whether the keystroke belongs to whatever the reader is typing into. */
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (typeof HTMLElement === 'undefined' || !(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return ['input', 'textarea', 'select'].includes(target.tagName.toLowerCase());
 }
 
 /**
@@ -257,8 +298,14 @@ export class Shortcuts implements ShortcutRegistry {
     if (this.detach || typeof window === 'undefined') return;
 
     const onKeyDown = (event: KeyboardEvent) => {
+      // A key that is part of composing a character is not a shortcut.
+      if (event.isComposing || event.defaultPrevented) return;
+
+      const typing = isTypingTarget(event.target);
       const ctrlOrMeta = event.ctrlKey || event.metaKey;
+
       for (const binding of this.bindings) {
+        if (typing && !binding.whileTyping && !ctrlOrMeta) continue;
         if (binding.key.toLowerCase() !== event.key.toLowerCase()) continue;
         if ((binding.ctrlOrMeta ?? false) !== ctrlOrMeta) continue;
         if ((binding.shift ?? false) !== event.shiftKey) continue;
