@@ -88,7 +88,8 @@ export function Viewer({
     };
   }, [opened, settings]);
 
-  // A single heading is an outline of one — noise rather than navigation.
+  // Deliberately not gated on heading count any more: the sidebar also holds
+  // the Files tab, which is worth reaching from a document with no outline.
   const hasSidebar = settings.showToc && !showRaw;
 
   useScrollMemory({

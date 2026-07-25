@@ -289,9 +289,17 @@ export function FolderBrowser({
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (rows.length === 0) return;
 
+    // Where the keystroke actually landed, not where state last recorded it.
+    // A keydown arriving in the same task as the focus that preceded it would
+    // otherwise be measured from the previous row.
+    const from =
+      (event.target instanceof HTMLElement
+        ? event.target.closest<HTMLElement>('[data-mdv-path]')?.dataset.mdvPath
+        : undefined) ?? focusPath;
+
     const at = Math.max(
       0,
-      rows.findIndex((row) => row.entry.path === focusPath),
+      rows.findIndex((row) => row.entry.path === from),
     );
     const row = rows[at];
 
