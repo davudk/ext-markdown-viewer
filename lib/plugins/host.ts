@@ -99,6 +99,12 @@ export class PluginHost {
 
   private readonly active = new Map<string, Teardown[]>();
   private readonly failures = new Map<string, string>();
+  /**
+   * One context per plugin, kept so its UI contributions can reach it.
+   * A contribution is declared on the plugin object before any context exists,
+   * so it cannot close over one — the host supplies it through React instead.
+   */
+  private readonly contexts = new Map<string, PluginContext>();
 
   readonly regions = new RegionRegistry();
   readonly overlays = new OverlayRegistry();
@@ -162,7 +168,7 @@ export class PluginHost {
       if (!plugin.markdownIt || !this.active.has(plugin.id)) continue;
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        plugin.markdownIt(md as any, this.contextFor(plugin));
+        plugin.markdownIt(md as any, this.contexts.get(plugin.id) ?? this.contextFor(plugin));
       } catch (error) {
         this.fail(plugin.id, error, 'markdownIt');
       }
@@ -190,6 +196,9 @@ export class PluginHost {
     this.active.set(plugin.id, teardowns);
     this.failures.delete(plugin.id);
 
+    const context = this.contextFor(plugin);
+    this.contexts.set(plugin.id, context);
+
     try {
       for (const region of plugin.provides ?? []) {
         teardowns.push(this.regions.declare(region));
@@ -198,7 +207,7 @@ export class PluginHost {
         teardowns.push(this.regions.add(plugin.id, plugin.ui));
       }
 
-      const result = await plugin.setup?.(this.contextFor(plugin));
+      const result = await plugin.setup?.(context);
       if (typeof result === 'function') teardowns.push(result);
     } catch (error) {
       this.fail(plugin.id, error, 'setup');
@@ -208,9 +217,29 @@ export class PluginHost {
     }
   }
 
+  /** The context a contribution should render under, if the plugin is active. */
+  contextOf(id: string): PluginContext | undefined {
+    return this.contexts.get(id);
+  }
+
+  /** The document every plugin shares. */
+  get documentHandle(): DocumentHandle {
+    return this.options.document;
+  }
+
+  /**
+   * A contribution threw while rendering. Its boundary has already replaced it
+   * with nothing; this records why so the settings page can say so rather than
+   * leaving the reader with a silently missing feature.
+   */
+  reportRenderError(id: string, error: unknown): void {
+    this.fail(id, error, 'render');
+  }
+
   private deactivate(id: string): void {
     const teardowns = this.active.get(id);
     this.active.delete(id);
+    this.contexts.delete(id);
     if (!teardowns) return;
 
     this.overlays.closeFor(id);

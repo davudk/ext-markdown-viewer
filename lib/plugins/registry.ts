@@ -144,6 +144,15 @@ export class OverlayRegistry {
     return { instanceId, close };
   }
 
+  /** Closes one overlay by id, firing its `onClose`. */
+  close(instanceId: number): void {
+    const before = this.store.get();
+    const entry = before.find((o) => o.instanceId === instanceId);
+    if (!entry) return;
+    this.store.set(before.filter((o) => o.instanceId !== instanceId));
+    entry.onClose?.();
+  }
+
   isOpen(instanceId: number): boolean {
     return this.store.get().some((o) => o.instanceId === instanceId);
   }

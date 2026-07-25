@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { PluginHost, sortPlugins, type HostStorage } from '../lib/plugins/host.ts';
+import { SharedDocument } from '../lib/plugins/document.ts';
 import { coerce, normalize, resolve } from '../lib/plugins/settings.ts';
 import {
   PLUGIN_API_VERSION,
@@ -37,6 +38,7 @@ const stubDocument: DocumentHandle = {
   isRaw: false,
   onChange: () => () => {},
   enhance: () => () => {},
+  refresh: () => {},
 };
 
 const silent = { warn: () => {}, error: () => {} };
@@ -404,4 +406,71 @@ test('resolve merges stored over defaults without inventing keys', () => {
 
   const merged = resolve(schema, { on: true, bogus: 1 } as Record<string, unknown>);
   assert.deepEqual(merged, { on: true, size: 4 });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The shared document                                                         */
+/* -------------------------------------------------------------------------- */
+
+test('an enhancement pass runs, and its teardown undoes it before each re-run', () => {
+  const doc = new SharedDocument();
+  const body = { tagName: 'MAIN' } as unknown as HTMLElement;
+  const log: string[] = [];
+
+  doc.enhance(() => {
+    log.push('run');
+    return () => log.push('undo');
+  });
+
+  // No requestAnimationFrame under the bare test runner, so passes run inline.
+  doc.update({ body, source: '', headings: [], url: 'u', isRaw: false });
+  assert.deepEqual(log, ['run']);
+
+  doc.refresh();
+  assert.deepEqual(log, ['run', 'undo', 'run'], 'a re-run skipped the previous undo');
+});
+
+test('removing a pass undoes it', () => {
+  const doc = new SharedDocument();
+  const body = {} as HTMLElement;
+  const log: string[] = [];
+
+  const stop = doc.enhance(() => () => log.push('undo'));
+  doc.update({ body, source: '', headings: [], url: 'u', isRaw: false });
+  stop();
+
+  assert.deepEqual(log, ['undo']);
+});
+
+test('a new body drops stale teardowns instead of running them', () => {
+  // The old teardown points at nodes that are no longer in any document;
+  // running it would at best do nothing and at worst throw.
+  const doc = new SharedDocument();
+  const log: string[] = [];
+
+  doc.enhance(() => () => log.push('undo'));
+  doc.update({ body: {} as HTMLElement, source: '', headings: [], url: 'u', isRaw: false });
+  log.length = 0;
+
+  doc.update({ body: {} as HTMLElement, source: '', headings: [], url: 'u', isRaw: false });
+  assert.deepEqual(log, [], 'a teardown ran against a detached body');
+});
+
+test('one pass throwing does not stop the others', () => {
+  const doc = new SharedDocument();
+  const ran: string[] = [];
+  const original = console.error;
+  console.error = () => {};
+
+  try {
+    doc.enhance(() => {
+      throw new Error('boom');
+    });
+    doc.enhance(() => void ran.push('second'));
+    doc.update({ body: {} as HTMLElement, source: '', headings: [], url: 'u', isRaw: false });
+  } finally {
+    console.error = original;
+  }
+
+  assert.deepEqual(ran, ['second']);
 });

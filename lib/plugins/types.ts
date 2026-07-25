@@ -114,6 +114,16 @@ export interface DocumentHandle {
    * rather than guessing from the DOM later.
    */
   enhance(pass: (body: HTMLElement) => Teardown | void): Teardown;
+
+  /**
+   * Re-run every enhancement pass against the current body.
+   *
+   * Found by the first pilot: passes re-run when the *document* changes, but a
+   * plugin whose own setting changed needs its pass reapplied against the same
+   * document. Without this each plugin would grow its own observer, which is
+   * the duplication `enhance` exists to remove.
+   */
+  refresh(): void;
 }
 
 /* -------------------------------------------------------------------------- */
