@@ -2,18 +2,9 @@ import { useMemo } from 'react';
 import { renderMarkdown } from '@/lib/markdown';
 
 export function Viewer({ source }: { source: string }) {
+  // Parsing a large README is the expensive part of the mount; keep it off the
+  // path of re-renders triggered by theme changes.
   const html = useMemo(() => renderMarkdown(source), [source]);
 
-  return (
-    <div className="mdv">
-      <header className="mdv-header">
-        <span className="mdv-badge">Markdown Viewer 2</span>
-        <span className="mdv-status">Rendered successfully</span>
-      </header>
-      <main
-        className="mdv-body"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    </div>
-  );
+  return <main className="mdv-body" dangerouslySetInnerHTML={{ __html: html }} />;
 }

@@ -6,8 +6,10 @@ export default defineConfig({
   manifest: {
     name: 'Markdown Viewer',
     description: 'Renders .md files in the browser instead of showing raw text.',
-    // Lets Chrome offer the "Allow access to file URLs" toggle, which the user
-    // must enable manually before local .md files render.
-    host_permissions: ['file:///*'],
+    // No host permissions at install time. `activeTab` covers click-to-render
+    // on the current tab, and anything persistent is requested per-origin at
+    // runtime out of `optional_host_permissions`.
+    permissions: ['storage', 'activeTab', 'scripting'],
+    optional_host_permissions: ['*://*/*'],
   },
 });

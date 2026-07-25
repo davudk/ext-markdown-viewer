@@ -2,8 +2,12 @@
   "name": "ext-markdown-viewer",
   "description": "Renders .md files in the browser instead of showing raw text.",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "wxt",
     "dev:firefox": "wxt -b firefox",
@@ -15,16 +19,19 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
-    "dompurify": "^3.4.12",
-    "marked": "^18.0.7",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "dompurify": "3.4.12",
+    "highlight.js": "11.11.1",
+    "marked": "18.0.7",
+    "marked-highlight": "2.2.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
   },
   "devDependencies": {
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
-    "@wxt-dev/module-react": "^1.1.5",
-    "typescript": "^5.9.3",
-    "wxt": "^0.20.27"
+    "@types/chrome": "0.1.28",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@wxt-dev/module-react": "1.1.5",
+    "typescript": "5.9.3",
+    "wxt": "0.20.27"
   }
 }
