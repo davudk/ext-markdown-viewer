@@ -3,6 +3,12 @@ import { createRoot } from 'react-dom/client';
 import { Viewer } from '@/components/Viewer';
 import { VIEWER_ROOT_ID, VIEWER_THEME_DATASET_KEY } from '@/lib/config';
 import { isCandidateUrl, isMarkdownContentType } from '@/lib/detect';
+import {
+  PLUGINS,
+  PluginHost,
+  SharedDocument,
+  chromeStorage,
+} from '@/lib/plugins';
 import { loadSettings, onSettingsChanged, type Settings } from '@/lib/settings';
 import {
   applyDocumentTheme,
@@ -62,12 +68,27 @@ export default defineUnlistedScript(() => {
       const override = await loadDocumentTheme(location.href);
       applyTheme(settings, override);
 
+      // Started before the first render so an enabled plugin is already live
+      // when the document appears, rather than flickering in a frame later.
+      const documentHandle = new SharedDocument();
+      const plugins = new PluginHost({
+        plugins: PLUGINS,
+        storage: chromeStorage(),
+        document: documentHandle,
+      });
+      await plugins.start();
+
       // React 19 commits asynchronously by default; flushSync makes the markup
       // exist before `reveal()` runs, so there is no blank frame between the
       // raw text disappearing and the rendered view appearing.
       flushSync(() =>
         createRoot(host).render(
-          <Viewer source={source} initialSettings={settings} />,
+          <Viewer
+            source={source}
+            initialSettings={settings}
+            plugins={plugins}
+            documentHandle={documentHandle}
+          />,
         ),
       );
     } catch (error) {

@@ -10,6 +10,13 @@ import { useKeyboardShortcuts, useLiveReload, useScrollMemory } from '@/lib/hook
 import type { CompareRequest } from '@/lib/diff';
 import { renderMarkdown } from '@/lib/markdown';
 import { onSettingsChanged, saveSettings, type Settings } from '@/lib/settings';
+import {
+  OverlayLayer,
+  PluginProvider,
+  Region,
+  type PluginHost,
+  type SharedDocument,
+} from '@/lib/plugins';
 import { applyDocumentTheme, loadDocumentTheme } from '@/lib/theme-presets';
 
 import { CommandPalette } from './CommandPalette';
@@ -38,9 +45,13 @@ import { Sidebar } from './Sidebar';
 export function Viewer({
   source: initialSource,
   initialSettings,
+  plugins,
+  documentHandle,
 }: {
   source: string;
   initialSettings: Settings;
+  plugins: PluginHost;
+  documentHandle: SharedDocument;
 }) {
   const [settings, setSettings] = useState(initialSettings);
   const [showRaw, setShowRaw] = useState(false);
@@ -95,6 +106,23 @@ export function Viewer({
     };
   }, [opened, settings]);
 
+  /**
+   * Publish the shell's view of the document to the plugin host.
+   *
+   * Runs after paint so `.mdv-body` exists — plugins read the live element, not
+   * a string, and a pass scheduled against a body that has not rendered would
+   * find nothing.
+   */
+  useEffect(() => {
+    documentHandle.update({
+      body: window.document.querySelector<HTMLElement>('main.mdv-body'),
+      source,
+      headings: doc.headings,
+      url,
+      isRaw: showRaw,
+    });
+  }, [documentHandle, doc, source, url, showRaw]);
+
   // Deliberately not gated on heading count any more: the sidebar also holds
   // the Files tab, which is worth reaching from a document with no outline.
   const hasSidebar = settings.showToc && !showRaw;
@@ -124,10 +152,15 @@ export function Viewer({
   });
 
   return (
-    <div
-      className={hasSidebar ? 'mdv mdv-with-toc' : 'mdv'}
-      style={typographyVars(settings)}
-    >
+    <PluginProvider host={plugins}>
+      <div
+        className={hasSidebar ? 'mdv mdv-with-toc' : 'mdv'}
+        style={typographyVars(settings)}
+      >
+        {/* Core regions: named for where they are, never for what fills them. */}
+        <Region name="chrome.top-start" />
+        <Region name="chrome.top-end" />
+        <Region name="document.before" />
       {hasSidebar ? (
         <Sidebar
           headings={doc.headings}
@@ -142,7 +175,6 @@ export function Viewer({
         html={doc.html}
         source={source}
         showRaw={showRaw}
-        externalLinks={settings.externalLinks}
         onToggleRaw={() => setShowRaw((raw) => !raw)}
       />
 
@@ -195,7 +227,13 @@ export function Viewer({
         split={settings.slideSplit}
         enabled={settings.presentation && !showRaw}
       />
-    </div>
+
+        <Region name="document.after" />
+        <Region name="chrome.bottom-start" />
+        <Region name="chrome.bottom-end" />
+        <OverlayLayer />
+      </div>
+    </PluginProvider>
   );
 }
 

@@ -7,7 +7,6 @@ import {
   type MouseEvent,
 } from 'react';
 
-import { clearExternalLinks, markExternalLinks } from '@/lib/links';
 
 import './document.css';
 
@@ -47,14 +46,11 @@ export function Document({
   html,
   source,
   showRaw,
-  externalLinks,
   onToggleRaw,
 }: {
   html: string;
   source: string;
   showRaw: boolean;
-  /** The `externalLinks` setting. Off attaches nothing and leaves no residue. */
-  externalLinks: boolean;
   onToggleRaw: () => void;
 }) {
   const bodyRef = useRef<HTMLElement | null>(null);
@@ -129,18 +125,11 @@ export function Document({
     const body = bodyRef.current;
     if (body) enhance(body);
 
-    // Part of the same pass rather than a second one: it is another attribute
-    // write per matching element, decided from the URL alone — no request, and
-    // nothing read back off the layout.
-    if (body) {
-      if (externalLinks) markExternalLinks(body, location.href);
-      else clearExternalLinks(body);
-    }
 
     // Replacing the body destroys the node holding the confirmation attribute,
     // which would otherwise leave a timer pointing at a detached element.
     return clearFeedback;
-  }, [html, showRaw, externalLinks, clearFeedback]);
+  }, [html, showRaw, clearFeedback]);
 
   return (
     // A single root, not a fragment: `.mdv > :not(nav)` in viewer.css grants

@@ -11,8 +11,11 @@
  * Now it is a file.
  */
 
-import { clearExternalLinks, markExternalLinks } from '@/lib/links';
-import { PLUGIN_API_VERSION, type Plugin } from '@/lib/plugins/types';
+// Relative, with explicit extensions, rather than the `@/` alias: plugins are
+// unit tested by the bare node runner, which has no bundler to resolve an
+// alias. The same rule already applies to everything under `lib/`.
+import { clearExternalLinks, markExternalLinks } from '../../lib/links.ts';
+import { PLUGIN_API_VERSION, type Plugin } from '../../lib/plugins/types.ts';
 
 const settings = {
   showIndicator: {

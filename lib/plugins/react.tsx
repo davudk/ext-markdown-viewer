@@ -161,6 +161,22 @@ export function Region({ name }: { name: RegionName }) {
 /* Overlays                                                                    */
 /* -------------------------------------------------------------------------- */
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]),' +
+  ' textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Visible focusable descendants, in tab order.
+ *
+ * Filtered by `getClientRects()` rather than `offsetParent`, which lies about
+ * position: fixed elements — and an overlay is exactly that.
+ */
+function collectFocusable(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (el) => el.getClientRects().length > 0,
+  );
+}
+
 /**
  * The overlay stack, rendered once for every plugin.
  *
@@ -176,6 +192,7 @@ export function OverlayLayer() {
   );
 
   const restoreTo = useRef<HTMLElement | null>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (overlays.length === 0) return;
@@ -188,15 +205,46 @@ export function OverlayLayer() {
     root?.setAttribute('inert', '');
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation();
-      // Only the top one: Escape in a stack closes the thing in front of you.
-      const top = host.overlays.top();
-      if (top) host.overlays.close(top.instanceId);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        // Only the top one: Escape in a stack closes the thing in front of you.
+        const top = host.overlays.top();
+        if (top) host.overlays.close(top.instanceId);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      // Containment, done once here rather than in every overlay. Scoped to the
+      // topmost surface, so a stack traps in the thing the reader is looking at.
+      const surface = layerRef.current?.lastElementChild as HTMLElement | undefined;
+      const focusable = surface ? collectFocusable(surface) : [];
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+
+      if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && (active === first || !surface?.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      }
     };
 
     window.addEventListener('keydown', onKeyDown, true);
+
+    // Focus the surface itself if the overlay brought nothing focusable —
+    // otherwise Tab would escape to the inert document behind it.
+    const surface = layerRef.current?.lastElementChild as HTMLElement | undefined;
+    const target = surface ? (collectFocusable(surface)[0] ?? surface) : null;
+    target?.focus();
 
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
@@ -211,7 +259,7 @@ export function OverlayLayer() {
   if (overlays.length === 0) return null;
 
   return createPortal(
-    <div className="mdv-overlays" data-mdv-chrome>
+    <div className="mdv-overlays" ref={layerRef} data-mdv-chrome>
       {overlays.map((overlay, index) => {
         const ctx = host.contextOf(overlay.pluginId);
         if (!ctx) return null;
@@ -228,6 +276,9 @@ export function OverlayLayer() {
             // Only the top overlay is interactive; the rest are scenery.
             // React 19 types `inert` as a boolean, unlike the bare attribute.
             inert={!isTop}
+            // -1 so the surface itself can hold focus when an overlay brings
+            // nothing focusable of its own.
+            tabIndex={-1}
             style={{ zIndex: 1000 + index }}
           >
             <ContributionBoundary
