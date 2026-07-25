@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 
@@ -508,7 +509,7 @@ function TreeRow({
     'aria-current': current ? ('page' as const) : undefined,
     tabIndex: focused ? 0 : -1,
     // Depth as a custom property so one padding rule covers every level.
-    style: { '--mdv-folder-depth': depth } as React.CSSProperties,
+    style: { '--mdv-folder-depth': depth } as CSSProperties,
     onFocus,
   };
 

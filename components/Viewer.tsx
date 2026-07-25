@@ -9,6 +9,7 @@ import {
 import { useKeyboardShortcuts, useLiveReload, useScrollMemory } from '@/lib/hooks';
 import { renderMarkdown } from '@/lib/markdown';
 import { onSettingsChanged, saveSettings, type Settings } from '@/lib/settings';
+import { applyDocumentTheme, loadDocumentTheme } from '@/lib/theme-presets';
 
 import { Document } from './Document';
 import type { OpenedDocument } from './FolderBrowser';
@@ -60,6 +61,32 @@ export function Viewer({
   const doc = useMemo(() => renderMarkdown(source), [source]);
 
   useEffect(() => onSettingsChanged(setSettings), []);
+
+  /**
+   * Re-resolve the theme when the document changes.
+   *
+   * The renderer already applied it before first paint, and re-applies on every
+   * settings change — but a per-document pin is keyed by URL, and opening a file
+   * through the Files tab changes the URL without reloading the page. Skipped
+   * for the page's own document so this never duplicates the renderer's work.
+   */
+  useEffect(() => {
+    if (opened === null) return;
+
+    let cancelled = false;
+    void loadDocumentTheme(opened.url).then((override) => {
+      if (cancelled) return;
+      applyDocumentTheme(document, {
+        settings,
+        override,
+        prefersDark: matchMedia('(prefers-color-scheme: dark)').matches,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [opened, settings]);
 
   // A single heading is an outline of one — noise rather than navigation.
   const hasSidebar = settings.showToc && !showRaw;

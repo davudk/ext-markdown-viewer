@@ -90,7 +90,6 @@ type Section =
   | 'rendering'
   | 'files'
   | 'sites'
-  | 'appearance'
   | 'reading'
   | 'behaviour'
   | 'css'
@@ -474,8 +473,6 @@ function App() {
    */
   const [prefersDark, setPrefersDark] = useState(false);
 
-  const fileInput = useRef<HTMLInputElement>(null);
-
   /**
    * A write that has been decided but not yet made, and the timer that will
    * make it. Held in refs, not state: nothing on screen depends on them, and
@@ -638,6 +635,19 @@ function App() {
     return access;
   }, [say, clear]);
 
+  /** Re-read the pinned documents. Cheap, and always from storage. */
+  const refreshPins = useCallback(async () => {
+    try {
+      setPins(await listDocumentThemes());
+    } catch {
+      setPins([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPins();
+  }, [refreshPins]);
+
   // Mirrored into a ref so `refresh` can read it without taking it as a
   // dependency and rebuilding on every busy transition.
   useEffect(() => {
@@ -695,11 +705,14 @@ function App() {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         void refresh().catch(() => undefined);
+        // A document can have been pinned in another tab while this page sat
+        // open; the list is only useful if it is the current one.
+        void refreshPins();
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [refresh]);
+  }, [refresh, refreshPins]);
 
   // And live, when the change happens while the page is already in view.
   useEffect(() => {
@@ -731,19 +744,6 @@ function App() {
     setPreset(next);
     void saveSettings({ themePreset: next }).catch(() => undefined);
   };
-
-  /** Re-read the pinned documents. Cheap, and always from storage. */
-  const refreshPins = useCallback(async () => {
-    try {
-      setPins(await listDocumentThemes());
-    } catch {
-      setPins([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshPins();
-  }, [refreshPins]);
 
   const unpin = (key: string) => {
     clear();
@@ -1502,7 +1502,6 @@ function App() {
 
             <input
               id="settings-file"
-              ref={fileInput}
               className="file"
               type="file"
               accept="application/json,.json"

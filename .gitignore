@@ -24,3 +24,6 @@ web-ext.config.ts
 *.njsproj
 *.sln
 *.sw?
+
+# Agent scratch space, never part of the build
+.scratch/

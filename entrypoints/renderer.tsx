@@ -3,7 +3,12 @@ import { createRoot } from 'react-dom/client';
 import { Viewer } from '@/components/Viewer';
 import { VIEWER_ROOT_ID, VIEWER_THEME_DATASET_KEY } from '@/lib/config';
 import { isCandidateUrl, isMarkdownContentType } from '@/lib/detect';
-import { loadSettings, onSettingsChanged, type Theme } from '@/lib/settings';
+import { loadSettings, onSettingsChanged, type Settings } from '@/lib/settings';
+import {
+  applyDocumentTheme,
+  loadDocumentTheme,
+  type DocumentTheme,
+} from '@/lib/theme-presets';
 
 
 /**
@@ -52,7 +57,10 @@ export default defineUnlistedScript(() => {
       // and the same settings seed the viewer so its first paint already has
       // the right typography rather than snapping to it a frame later.
       const settings = await loadSettings();
-      applyTheme(settings.theme);
+      // Resolved before the first paint, preset and custom CSS included:
+      // applying them after mount would show the default palette for a frame.
+      const override = await loadDocumentTheme(location.href);
+      applyTheme(settings, override);
 
       // React 19 commits asynchronously by default; flushSync makes the markup
       // exist before `reveal()` runs, so there is no blank frame between the
@@ -121,24 +129,31 @@ function restoreRawText(source: string): void {
 }
 
 /**
- * Reflects the effective theme onto <html> as `data-mdv-theme`, which is what
- * viewer.css keys off, and keeps it current for the life of the document.
+ * Resolves the theme — polarity, preset palette and custom CSS — onto the
+ * document, and keeps it current for the document's lifetime.
+ *
+ * This is the only writer of `data-mdv-theme` for the page's own document.
+ * `Viewer` re-applies it when the reader opens a different file through the
+ * Files tab, since a per-document pin is keyed by URL and that changes.
  */
-function applyTheme(initial: Theme) {
+function applyTheme(initial: Settings, override: DocumentTheme | null) {
   const darkQuery = matchMedia('(prefers-color-scheme: dark)');
-  let theme: Theme = initial;
+  let settings = initial;
 
   const paint = () => {
-    document.documentElement.dataset[VIEWER_THEME_DATASET_KEY] =
-      theme === 'auto' ? (darkQuery.matches ? 'dark' : 'light') : theme;
+    applyDocumentTheme(document, {
+      settings,
+      override,
+      prefersDark: darkQuery.matches,
+    });
   };
 
-  onSettingsChanged((settings) => {
-    theme = settings.theme;
+  onSettingsChanged((next) => {
+    settings = next;
     paint();
   });
 
-  // Only observable while `theme` is 'auto', but subscribing unconditionally
+  // Only observable while the theme is 'auto', but subscribing unconditionally
   // avoids having to add and remove the listener as the setting changes.
   darkQuery.addEventListener('change', paint);
 
