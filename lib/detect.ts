@@ -1,46 +1,23 @@
 /**
- * Activation rules. These run in two places with different information
- * available, so they're split: the service worker only has a URL to go on,
- * while the content script can additionally see the response's content type
- * and the shape of the DOM.
+ * Activation rules — whether a given page is one we should render.
+ *
+ * These run in two places with different information available, so they're
+ * split: the service worker only has a URL to go on, while the renderer can
+ * additionally see the response's content type and the shape of the DOM.
+ *
+ * The lists these decisions are made from live in `config.ts`.
  */
 
-export const MARKDOWN_EXTENSIONS = ['.md', '.markdown', '.mkd', '.mdx'];
+import {
+  MARKDOWN_CONTENT_TYPES,
+  MARKDOWN_EXTENSIONS,
+  RAW_HOSTS,
+  RENDERS_ITS_OWN_MARKDOWN,
+  RESTRICTED_SCHEMES,
+  SUPPORTED_PROTOCOLS,
+} from './config.ts';
 
-const MARKDOWN_CONTENT_TYPES = [
-  'text/plain',
-  'text/markdown',
-  'text/x-markdown',
-];
-
-/**
- * Hosts that render markdown themselves. Most serve text/html and would be
- * filtered by the content-type check anyway, but they're listed explicitly so
- * a redesign on their end can't turn us into a page-wrecking bug.
- */
-const RENDERS_ITS_OWN_MARKDOWN = [
-  'github.com',
-  'gist.github.com',
-  'gitlab.com',
-  'bitbucket.org',
-  'dev.azure.com',
-  'gitbook.io',
-  'gitbook.com',
-  'readthedocs.io',
-  'readthedocs.org',
-  'readme.io',
-  'notion.so',
-  'obsidian.md',
-];
-
-/** Raw-content hosts, which serve markdown as text and are always fair game. */
-const RAW_HOSTS = [
-  'raw.githubusercontent.com',
-  'gist.githubusercontent.com',
-  'raw.githack.com',
-  'cdn.jsdelivr.net',
-];
-
+/** Exact host or any subdomain of it. Never a substring — "notgithub.com" is not github. */
 function hostMatches(hostname: string, list: string[]): boolean {
   const host = hostname.toLowerCase();
   return list.some((entry) => host === entry || host.endsWith(`.${entry}`));
@@ -58,10 +35,19 @@ export function isMarkdownContentType(contentType: string): boolean {
   return MARKDOWN_CONTENT_TYPES.includes(type);
 }
 
+/** A browser-internal page, where no extension may run whatever the URL looks like. */
+export function isRestrictedUrl(rawUrl: string): boolean {
+  try {
+    return RESTRICTED_SCHEMES.includes(new URL(rawUrl).protocol);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Whether a URL is a plausible markdown target. Deliberately permissive: it
- * decides whether to *offer* rendering, and the content script re-checks
- * against the real content type before touching anything.
+ * decides whether to *offer* rendering, and the renderer re-checks against the
+ * real content type before touching anything.
  */
 export function isCandidateUrl(rawUrl: string): boolean {
   let url: URL;
@@ -71,7 +57,7 @@ export function isCandidateUrl(rawUrl: string): boolean {
     return false;
   }
 
-  if (!['http:', 'https:', 'file:'].includes(url.protocol)) return false;
+  if (!SUPPORTED_PROTOCOLS.includes(url.protocol)) return false;
   if (!hasMarkdownExtension(url.pathname)) return false;
 
   // A raw host serves the file verbatim even when its parent domain renders

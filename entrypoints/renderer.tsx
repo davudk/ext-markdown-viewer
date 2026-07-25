@@ -1,10 +1,10 @@
 import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { Viewer } from '@/components/Viewer';
+import { VIEWER_ROOT_ID, VIEWER_THEME_DATASET_KEY } from '@/lib/config';
 import { isCandidateUrl, isMarkdownContentType } from '@/lib/detect';
 import { loadSettings, onSettingsChanged, type Theme } from '@/lib/settings';
 
-const ROOT_ID = 'mdv-root';
 
 /**
  * Chrome gives extensions no way to register a content-type handler, so the only
@@ -18,12 +18,12 @@ const ROOT_ID = 'mdv-root';
  * document is still loading.
  *
  * The stylesheet is injected separately by the service worker (see
- * `RENDERER_CSS` in lib/messages.ts), so it is deliberately not imported here.
+ * `RENDERER_CSS` in lib/config.ts), so it is deliberately not imported here.
  */
 export default defineUnlistedScript(() => {
   // Click-to-render on an already-rendered page, or a double registration, would
   // otherwise wipe the view and mount a second React root over it.
-  if (document.getElementById(ROOT_ID)) return;
+  if (document.getElementById(VIEWER_ROOT_ID)) return;
 
   if (!isCandidateUrl(location.href)) return;
   // `document.contentType` is available at document_start and is the cheapest
@@ -37,7 +37,7 @@ export default defineUnlistedScript(() => {
 
     // Not the single <pre> Chrome uses for plain text — some other page just
     // happens to end in .md. Leave it alone.
-    if (source === null || document.getElementById(ROOT_ID)) {
+    if (source === null || document.getElementById(VIEWER_ROOT_ID)) {
       reveal();
       return;
     }
@@ -103,7 +103,7 @@ function readSource(): string | null {
 /** Replaces Chrome's <pre> with the React host and returns it. */
 function claimBody(): HTMLDivElement {
   const host = document.createElement('div');
-  host.id = ROOT_ID;
+  host.id = VIEWER_ROOT_ID;
   document.body.replaceChildren(host);
   return host;
 }
@@ -124,7 +124,7 @@ async function applyTheme() {
   let theme: Theme = (await loadSettings()).theme;
 
   const paint = () => {
-    document.documentElement.dataset.mdvTheme =
+    document.documentElement.dataset[VIEWER_THEME_DATASET_KEY] =
       theme === 'auto' ? (darkQuery.matches ? 'dark' : 'light') : theme;
   };
 

@@ -11,6 +11,7 @@ import {
   revokeOrigin,
 } from '@/lib/permissions';
 import {
+  THEME_OPTIONS,
   DEFAULT_SETTINGS,
   loadSettings,
   onSettingsChanged,
@@ -175,12 +176,6 @@ function MarkIcon() {
     </svg>
   );
 }
-
-const THEMES: { value: Theme; label: string }[] = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'auto', label: 'Auto' },
-];
 
 /** A live region that is always in the DOM, so async results get announced. */
 function Message({ notice }: { notice: Notice | null }) {
@@ -721,7 +716,7 @@ function App() {
               role="radiogroup"
               aria-labelledby="theme-label"
             >
-              {THEMES.map(({ value, label }) => (
+              {THEME_OPTIONS.map(({ value, label }) => (
                 <label
                   key={value}
                   className={value === theme ? 'segment is-on' : 'segment'}

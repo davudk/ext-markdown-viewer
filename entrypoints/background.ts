@@ -1,17 +1,6 @@
+import { CONTENT_SCRIPT_ID, RENDERER_CSS, RENDERER_JS } from '@/lib/config';
 import { expandOrigin, fileMatchPatterns, hasFileAccess } from '@/lib/permissions';
-import {
-  RENDERER_CSS,
-  RENDERER_JS,
-  type Message,
-  type RenderTabResult,
-  type SyncResult,
-} from '@/lib/messages';
-
-/**
- * A single stable id for everything we register. Registrations are always
- * rebuilt wholesale from granted permissions, so there is never more than one.
- */
-const SCRIPT_ID = 'markdown-auto';
+import type { Message, RenderTabResult, SyncResult } from '@/lib/messages';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -22,7 +11,7 @@ async function unregisterExisting(): Promise<void> {
     const existing = await chrome.scripting.getRegisteredContentScripts();
     const ids = existing
       .map((script) => script.id)
-      .filter((id) => id === SCRIPT_ID);
+      .filter((id) => id === CONTENT_SCRIPT_ID);
     if (ids.length > 0) {
       await chrome.scripting.unregisterContentScripts({ ids });
     }
@@ -54,7 +43,7 @@ async function syncRegistrations(): Promise<number> {
 
   await chrome.scripting.registerContentScripts([
     {
-      id: SCRIPT_ID,
+      id: CONTENT_SCRIPT_ID,
       matches: [...matches],
       js: [RENDERER_JS],
       css: [RENDERER_CSS],

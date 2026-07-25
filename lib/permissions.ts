@@ -1,5 +1,5 @@
 /**
- * Permission helpers shared by the popup, the options page, and the service
+ * Permission state, shared by the popup, the options page, and the service
  * worker.
  *
  * Nothing here is cached and nothing is mirrored into storage. Chrome's own
@@ -10,12 +10,9 @@
  * the browser has taken away is worse than no toggle at all.
  */
 
-// Relative with an explicit extension, not the `@/` alias: this module is unit
-// tested by the bare node runner, which has no bundler to resolve the alias.
-import { MARKDOWN_EXTENSIONS } from './detect.ts';
+import { ALL_SITES, MARKDOWN_EXTENSIONS } from './config.ts';
 
-/** Requesting this is what "render automatically on every site" actually means. */
-export const ALL_SITES = '*://*/*';
+export { ALL_SITES } from './config.ts';
 
 /** Splits a granted origin into scheme and host; both may be wildcards. */
 const ORIGIN_PATTERN = /^(\*|https?):\/\/([^/]+)\//;

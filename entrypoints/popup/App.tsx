@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import {
+  RESTRICTED_SCHEMES,
+  VIEWER_ROOT_ID,
+} from '@/lib/config';
 import { isCandidateUrl, originPattern } from '@/lib/detect';
 import {
   sendMessage,
@@ -13,6 +17,7 @@ import {
 } from '@/lib/permissions';
 import {
   DEFAULT_SETTINGS,
+  THEME_OPTIONS,
   loadSettings,
   saveSettings,
   type Theme,
@@ -47,22 +52,6 @@ type RenderState = 'rendered' | 'raw' | 'unknown';
 type Notice = { tone: 'ok' | 'error'; text: string };
 
 type Busy = 'render' | 'grant' | 'revoke' | null;
-
-/** The renderer's mount point (see `ROOT_ID` in entrypoints/renderer.tsx). */
-const ROOT_ID = 'mdv-root';
-
-/** Pages no extension can touch, so the popup explains rather than offers. */
-const RESTRICTED_SCHEMES = [
-  'chrome:',
-  'chrome-untrusted:',
-  'edge:',
-  'brave:',
-  'about:',
-  'devtools:',
-  'view-source:',
-  'chrome-extension:',
-  'moz-extension:',
-];
 
 function describeError(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -106,8 +95,10 @@ async function detectRenderState(
   try {
     const [frame] = await chrome.scripting.executeScript({
       target: { tabId },
-      // Serialized and run in the page, so it may not close over anything.
-      func: () => document.getElementById('mdv-root') !== null,
+      // Serialized and run in the page, so it may not close over anything —
+      // the id has to travel as an argument to stay a single source of truth.
+      func: (rootId: string) => document.getElementById(rootId) !== null,
+      args: [VIEWER_ROOT_ID],
     });
     if (typeof frame?.result !== 'boolean') return 'unknown';
     return frame.result ? 'rendered' : 'raw';
@@ -273,12 +264,6 @@ function MarkIcon() {
   );
 }
 
-const THEMES: { value: Theme; label: string }[] = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'auto', label: 'Auto' },
-];
-
 function ThemePicker({
   theme,
   onChange,
@@ -294,7 +279,7 @@ function ThemePicker({
         Theme
       </span>
       <div className="segmented">
-        {THEMES.map(({ value, label }) => (
+        {THEME_OPTIONS.map(({ value, label }) => (
           <label
             key={value}
             className={value === theme ? 'segment is-on' : 'segment'}

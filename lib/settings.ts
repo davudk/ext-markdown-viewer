@@ -1,24 +1,22 @@
 /**
+ * Reading and writing user settings.
+ *
  * All state lives in chrome.storage.local. Never storage.sync — that round-trips
  * through Google's servers, which breaks the zero-network guarantee.
+ *
+ * The shape and defaults live in `config.ts` and are re-exported here so callers
+ * have one import for the whole settings surface.
  */
 
-export type Theme = 'light' | 'dark' | 'auto';
+import { DEFAULT_SETTINGS, SETTINGS_KEY, type Settings } from './config.ts';
 
-export interface Settings {
-  theme: Theme;
-}
-
-export const DEFAULT_SETTINGS: Settings = {
-  theme: 'auto',
-};
-
-const KEY = 'settings';
+export { DEFAULT_SETTINGS, THEME_OPTIONS } from './config.ts';
+export type { Settings, Theme } from './config.ts';
 
 export async function loadSettings(): Promise<Settings> {
   try {
-    const stored = await chrome.storage.local.get(KEY);
-    return { ...DEFAULT_SETTINGS, ...(stored[KEY] as Partial<Settings>) };
+    const stored = await chrome.storage.local.get(SETTINGS_KEY);
+    return { ...DEFAULT_SETTINGS, ...(stored[SETTINGS_KEY] as Partial<Settings>) };
   } catch {
     // Storage can fail in a torn-down context; defaults keep rendering working.
     return { ...DEFAULT_SETTINGS };
@@ -27,7 +25,7 @@ export async function loadSettings(): Promise<Settings> {
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
   const next = { ...(await loadSettings()), ...patch };
-  await chrome.storage.local.set({ [KEY]: next });
+  await chrome.storage.local.set({ [SETTINGS_KEY]: next });
   return next;
 }
 
@@ -44,8 +42,11 @@ export function onSettingsChanged(fn: (settings: Settings) => void): () => void 
     changes: Record<string, chrome.storage.StorageChange>,
     area: string,
   ) => {
-    if (area !== 'local' || !changes[KEY]) return;
-    fn({ ...DEFAULT_SETTINGS, ...(changes[KEY].newValue as Partial<Settings>) });
+    if (area !== 'local' || !changes[SETTINGS_KEY]) return;
+    fn({
+      ...DEFAULT_SETTINGS,
+      ...(changes[SETTINGS_KEY].newValue as Partial<Settings>),
+    });
   };
 
   try {
