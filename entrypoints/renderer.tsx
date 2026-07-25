@@ -33,20 +33,36 @@ export default defineUnlistedScript(() => {
   const reveal = hideRawText();
 
   onDomReady(async () => {
+    const source = readSource();
+
+    // Not the single <pre> Chrome uses for plain text — some other page just
+    // happens to end in .md. Leave it alone.
+    if (source === null || document.getElementById(ROOT_ID)) {
+      reveal();
+      return;
+    }
+
+    // Claim the page synchronously, before the first await. Two injections
+    // racing at document_start would both clear the guard above otherwise,
+    // and the loser would mount a second root over the winner's.
+    const host = claimBody();
+
     try {
-      const source = readSource();
-
-      // Not the single <pre> Chrome uses for plain text — some other page just
-      // happens to end in .md. Leave it alone.
-      if (source === null) return;
-      if (document.getElementById(ROOT_ID)) return;
-
       // Resolving the theme is async, and it has to win the race against the
       // first paint: revealing before the attribute is set would flash the
       // light palette on a dark document.
       await applyTheme();
 
-      mount(source);
+      // React 19 commits asynchronously by default; flushSync makes the markup
+      // exist before `reveal()` runs, so there is no blank frame between the
+      // raw text disappearing and the rendered view appearing.
+      flushSync(() => createRoot(host).render(<Viewer source={source} />));
+    } catch (error) {
+      // Chrome's <pre> is already gone, so failing here without a fallback
+      // would hand the reader a blank page — strictly worse than the raw text
+      // they would have seen if the extension had never run. Put it back.
+      console.error('[markdown-viewer] render failed:', error);
+      restoreRawText(source);
     } finally {
       // Whatever happened above, the page must not stay invisible. On the
       // post-load injection path there is nothing to hide anyway.
@@ -84,17 +100,19 @@ function readSource(): string | null {
   return pre.textContent ?? '';
 }
 
-function mount(source: string) {
-  document.body.replaceChildren();
-
+/** Replaces Chrome's <pre> with the React host and returns it. */
+function claimBody(): HTMLDivElement {
   const host = document.createElement('div');
   host.id = ROOT_ID;
-  document.body.appendChild(host);
+  document.body.replaceChildren(host);
+  return host;
+}
 
-  // React 19 commits asynchronously by default; flushSync makes the markup exist
-  // before the caller un-hides the page, so there is no blank frame between the
-  // raw text disappearing and the rendered view appearing.
-  flushSync(() => createRoot(host).render(<Viewer source={source} />));
+/** Last resort after a failed render: reinstate something the reader can read. */
+function restoreRawText(source: string): void {
+  const pre = document.createElement('pre');
+  pre.textContent = source;
+  document.body.replaceChildren(pre);
 }
 
 /**

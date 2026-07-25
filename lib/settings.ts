@@ -31,7 +31,14 @@ export async function saveSettings(patch: Partial<Settings>): Promise<Settings> 
   return next;
 }
 
-/** Fires whenever settings change, so an open document restyles immediately. */
+/**
+ * Fires whenever settings change, so an open document restyles immediately.
+ *
+ * Subscribing is best-effort for the same reason reading is: this runs inside
+ * the renderer, which has already replaced the page content by the time it is
+ * called. A missing or torn-down `chrome.storage` must cost the reader live
+ * theme updates, never the document itself.
+ */
 export function onSettingsChanged(fn: (settings: Settings) => void): () => void {
   const listener = (
     changes: Record<string, chrome.storage.StorageChange>,
@@ -41,6 +48,17 @@ export function onSettingsChanged(fn: (settings: Settings) => void): () => void 
     fn({ ...DEFAULT_SETTINGS, ...(changes[KEY].newValue as Partial<Settings>) });
   };
 
-  chrome.storage.onChanged.addListener(listener);
-  return () => chrome.storage.onChanged.removeListener(listener);
+  try {
+    chrome.storage.onChanged.addListener(listener);
+  } catch {
+    return () => {};
+  }
+
+  return () => {
+    try {
+      chrome.storage.onChanged.removeListener(listener);
+    } catch {
+      // The context is already gone; there is nothing left to detach from.
+    }
+  };
 }

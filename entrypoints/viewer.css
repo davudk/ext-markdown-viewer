@@ -1,69 +1,191 @@
-#mdv-root {
+/* Markdown Viewer — document stylesheet.
+   Everything is driven by the `data-mdv-theme` attribute on <html>, which JS
+   resolves to a literal "light" or "dark" before paint. No media queries for
+   color, no webfonts, no external references of any kind. */
+
+/* ==========================================================================
+   1. Theme tokens
+   ========================================================================== */
+
+:root[data-mdv-theme='light'] {
+  color-scheme: light;
+
   --mdv-bg: #ffffff;
+  --mdv-surface: #f6f8fa;
+  --mdv-surface-alt: #fafbfc;
   --mdv-fg: #1f2328;
-  --mdv-muted: #59636e;
-  --mdv-border: #d1d9e0;
-  --mdv-accent: #0969da;
-  --mdv-code-bg: #f6f8fa;
+  --mdv-fg-muted: #5a636d;
+  --mdv-border: #d5dbe1;
+  --mdv-border-strong: #b6bfc9;
+  --mdv-accent: #0a53be;
+  --mdv-accent-hover: #08409a;
+  --mdv-visited: #6639ba;
+  --mdv-on-accent: #ffffff;
+  --mdv-selection: #cfe3ff;
+  --mdv-scrollbar: #c3ccd5;
+  --mdv-mark-bg: #fff3c4;
 
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
-    sans-serif;
-  color: var(--mdv-fg);
-  background: var(--mdv-bg);
-  line-height: 1.6;
-  font-size: 16px;
+  --mdv-tk-keyword: #b3202c;
+  --mdv-tk-string: #0a3069;
+  --mdv-tk-comment: #5f6874;
+  --mdv-tk-number: #0550ae;
+  --mdv-tk-title: #7a3fd0;
+  --mdv-tk-builtin: #8a3400;
+  --mdv-tk-tag: #0f5c28;
+  --mdv-tk-meta: #57606a;
+  --mdv-tk-punct: #4a545e;
+  --mdv-tk-addition: #0f5c28;
+  --mdv-tk-addition-bg: #e6ffec;
+  --mdv-tk-deletion: #8a1420;
+  --mdv-tk-deletion-bg: #ffebe9;
 }
 
-@media (prefers-color-scheme: dark) {
-  #mdv-root {
-    --mdv-bg: #0d1117;
-    --mdv-fg: #e6edf3;
-    --mdv-muted: #9198a1;
-    --mdv-border: #3d444d;
-    --mdv-accent: #4493f8;
-    --mdv-code-bg: #151b23;
-  }
+:root[data-mdv-theme='dark'] {
+  color-scheme: dark;
+
+  --mdv-bg: #0d1117;
+  --mdv-surface: #161b22;
+  --mdv-surface-alt: #12171f;
+  --mdv-fg: #e6edf3;
+  --mdv-fg-muted: #9aa4af;
+  --mdv-border: #30363d;
+  --mdv-border-strong: #4a525c;
+  --mdv-accent: #6cb1ff;
+  --mdv-accent-hover: #8cc4ff;
+  --mdv-visited: #c4a0ff;
+  --mdv-on-accent: #0d1117;
+  --mdv-selection: #2d4f7c;
+  --mdv-scrollbar: #454d57;
+  --mdv-mark-bg: #4a3a12;
+
+  --mdv-tk-keyword: #ff8a80;
+  --mdv-tk-string: #a8d5ff;
+  --mdv-tk-comment: #9aa4af;
+  --mdv-tk-number: #84c5ff;
+  --mdv-tk-title: #d7b3ff;
+  --mdv-tk-builtin: #ffb070;
+  --mdv-tk-tag: #8ceb96;
+  --mdv-tk-meta: #a5b1bd;
+  --mdv-tk-punct: #c2cbd4;
+  --mdv-tk-addition: #8ceb96;
+  --mdv-tk-addition-bg: #10251a;
+  --mdv-tk-deletion: #ffaba4;
+  --mdv-tk-deletion-bg: #2b1416;
 }
 
-/* Chrome's plain-text stylesheet is still on the page; reset what it sets. */
-html:has(#mdv-root),
-body:has(#mdv-root) {
+:root {
+  /* System stacks only — the extension never touches the network. */
+  --mdv-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text',
+    'Segoe UI', ui-sans-serif, system-ui, Roboto, 'Helvetica Neue', Arial,
+    'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+  --mdv-font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    'Liberation Mono', 'Roboto Mono', 'Courier New', monospace;
+
+  /* Modular scale, ratio 1.2 (minor third), expressed in em of the body size
+     so every step stays proportional if the base size changes. */
+  --mdv-scale-1: 1.2em;
+  --mdv-scale-2: 1.44em;
+  --mdv-scale-3: 1.728em;
+  --mdv-scale-4: 2.074em;
+
+  --mdv-measure: 72ch;
+  --mdv-leading: 1.65;
+  --mdv-block-gap: 1.15em;
+  --mdv-radius: 8px;
+  --mdv-radius-sm: 4px;
+  --mdv-dur: 120ms;
+}
+
+/* ==========================================================================
+   2. Host page reset
+
+   The viewer takes over a document Chrome was rendering as plain text, so its
+   UA plain-text stylesheet (monospace family, pre wrapping, body margin) is
+   still attached and leaks into everything below.
+   ========================================================================== */
+
+html,
+body {
   margin: 0;
   padding: 0;
-  background: var(--mdv-bg, #fff);
+  border: 0;
+  width: auto;
+  height: auto;
+  min-height: 100%;
+  background-color: var(--mdv-bg);
+  color: var(--mdv-fg);
+  font-family: var(--mdv-font-sans);
+  font-size: 100%;
+  white-space: normal;
+  word-wrap: normal;
+  overflow-wrap: normal;
+  tab-size: 4;
 }
 
-.mdv-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 24px;
-  border-bottom: 1px solid var(--mdv-border);
-  background: var(--mdv-code-bg);
-  position: sticky;
-  top: 0;
-  z-index: 1;
+body {
+  overflow-x: hidden;
 }
 
-.mdv-badge {
-  font-size: 13px;
-  font-weight: 600;
+#mdv-root,
+#mdv-root * {
+  box-sizing: border-box;
 }
 
-.mdv-status {
-  font-size: 13px;
-  color: var(--mdv-muted);
+#mdv-root {
+  font-family: var(--mdv-font-sans);
+  /* Scales with the user's own default size instead of overriding it. */
+  font-size: clamp(1rem, 0.955rem + 0.22vw, 1.09rem);
+  line-height: var(--mdv-leading);
+  color: var(--mdv-fg);
+  background-color: var(--mdv-bg);
+  font-synthesis-weight: none;
+  font-feature-settings: 'kern' 1, 'liga' 1;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  scrollbar-color: var(--mdv-scrollbar) transparent;
 }
+
+/* ==========================================================================
+   3. Document column
+   ========================================================================== */
 
 .mdv-body {
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 32px 24px 96px;
+  max-width: var(--mdv-measure);
+  margin-inline: auto;
+  padding-inline: clamp(1.15rem, 5vw, 2rem);
+  padding-block: clamp(2rem, 6vw, 3.75rem) 6rem;
+  overflow-wrap: break-word;
 }
 
 .mdv-body > :first-child {
   margin-top: 0;
 }
+
+.mdv-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* Blocks carry bottom margin only; heading top margins collapse against them
+   so the larger of the two always wins. */
+.mdv-body p,
+.mdv-body ul,
+.mdv-body ol,
+.mdv-body dl,
+.mdv-body pre,
+.mdv-body blockquote,
+.mdv-body table,
+.mdv-body figure,
+.mdv-body details {
+  margin: 0 0 var(--mdv-block-gap);
+}
+
+.mdv-body p {
+  text-wrap: pretty;
+}
+
+/* ==========================================================================
+   4. Headings
+   ========================================================================== */
 
 .mdv-body h1,
 .mdv-body h2,
@@ -71,109 +193,680 @@ body:has(#mdv-root) {
 .mdv-body h4,
 .mdv-body h5,
 .mdv-body h6 {
-  margin: 24px 0 16px;
-  font-weight: 600;
-  line-height: 1.25;
+  font-family: inherit;
+  font-weight: 650;
+  color: var(--mdv-fg);
+  text-wrap: balance;
+  /* Top margins are em of the heading's own size, so bigger headings
+     automatically open up more space above them. */
 }
 
 .mdv-body h1 {
-  font-size: 2em;
-  padding-bottom: 0.3em;
+  font-size: var(--mdv-scale-4);
+  line-height: 1.18;
+  letter-spacing: -0.021em;
+  margin: 1.35em 0 0.55em;
+  padding-bottom: 0.28em;
   border-bottom: 1px solid var(--mdv-border);
 }
 
 .mdv-body h2 {
-  font-size: 1.5em;
-  padding-bottom: 0.3em;
+  font-size: var(--mdv-scale-3);
+  line-height: 1.24;
+  letter-spacing: -0.017em;
+  margin: 1.7em 0 0.6em;
+  padding-bottom: 0.28em;
   border-bottom: 1px solid var(--mdv-border);
 }
 
-.mdv-body h3 { font-size: 1.25em; }
-.mdv-body h4 { font-size: 1em; }
-.mdv-body h5 { font-size: 0.875em; }
-.mdv-body h6 { font-size: 0.85em; color: var(--mdv-muted); }
-
-.mdv-body p,
-.mdv-body ul,
-.mdv-body ol,
-.mdv-body blockquote,
-.mdv-body table,
-.mdv-body pre {
-  margin: 0 0 16px;
+.mdv-body h3 {
+  font-size: var(--mdv-scale-2);
+  line-height: 1.32;
+  letter-spacing: -0.011em;
+  margin: 1.8em 0 0.6em;
 }
 
-.mdv-body ul,
-.mdv-body ol {
-  padding-left: 2em;
+.mdv-body h4 {
+  font-size: var(--mdv-scale-1);
+  line-height: 1.4;
+  letter-spacing: -0.006em;
+  margin: 1.9em 0 0.65em;
 }
 
-.mdv-body li + li {
-  margin-top: 0.25em;
+.mdv-body h5 {
+  font-size: 1em;
+  line-height: 1.5;
+  margin: 2em 0 0.7em;
 }
+
+.mdv-body h6 {
+  font-size: 0.85em;
+  line-height: 1.5;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--mdv-fg-muted);
+  margin: 2.3em 0 0.8em;
+}
+
+/* ==========================================================================
+   5. Inline text
+   ========================================================================== */
+
+.mdv-body strong,
+.mdv-body b {
+  font-weight: 650;
+  color: var(--mdv-fg);
+}
+
+.mdv-body em,
+.mdv-body i {
+  font-style: italic;
+}
+
+.mdv-body del,
+.mdv-body s {
+  color: var(--mdv-fg-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.mdv-body ins {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.mdv-body mark {
+  background-color: var(--mdv-mark-bg);
+  color: var(--mdv-fg);
+  padding: 0.1em 0.2em;
+  border-radius: var(--mdv-radius-sm);
+}
+
+.mdv-body small {
+  font-size: 0.875em;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-body sub,
+.mdv-body sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.mdv-body sup {
+  top: -0.5em;
+}
+
+.mdv-body sub {
+  bottom: -0.25em;
+}
+
+.mdv-body abbr[title] {
+  text-decoration: underline dotted;
+  text-underline-offset: 0.2em;
+  cursor: help;
+}
+
+.mdv-body kbd {
+  font-family: var(--mdv-font-mono);
+  font-size: 0.8em;
+  line-height: 1;
+  padding: 0.25em 0.45em;
+  border: 1px solid var(--mdv-border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--mdv-radius-sm);
+  background-color: var(--mdv-surface);
+  color: var(--mdv-fg);
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   6. Links
+   ========================================================================== */
 
 .mdv-body a {
   color: var(--mdv-accent);
   text-decoration: none;
+  text-underline-offset: 0.16em;
+  text-decoration-thickness: 1px;
+  transition: color var(--mdv-dur) ease;
 }
 
-.mdv-body a:hover {
+.mdv-body a:visited {
+  color: var(--mdv-visited);
+}
+
+.mdv-body a:hover,
+.mdv-body a:active {
+  color: var(--mdv-accent-hover);
   text-decoration: underline;
 }
 
+.mdv-body a code {
+  color: inherit;
+}
+
+#mdv-root :focus-visible {
+  outline: 2px solid var(--mdv-accent);
+  outline-offset: 2px;
+  border-radius: var(--mdv-radius-sm);
+}
+
+/* ==========================================================================
+   7. Lists
+   ========================================================================== */
+
+.mdv-body ul,
+.mdv-body ol {
+  padding-left: 1.6em;
+}
+
+.mdv-body ul {
+  list-style-type: disc;
+}
+
+.mdv-body ul ul {
+  list-style-type: circle;
+}
+
+.mdv-body ul ul ul {
+  list-style-type: square;
+}
+
+.mdv-body ol ol {
+  list-style-type: lower-alpha;
+}
+
+.mdv-body ol ol ol {
+  list-style-type: lower-roman;
+}
+
+.mdv-body li {
+  margin: 0.3em 0;
+}
+
+.mdv-body li::marker {
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-body li > ul,
+.mdv-body li > ol {
+  margin: 0.3em 0 0.4em;
+}
+
+.mdv-body li > p {
+  margin-bottom: 0.5em;
+}
+
+.mdv-body li > :last-child {
+  margin-bottom: 0;
+}
+
+.mdv-body dt {
+  font-weight: 650;
+  margin-top: 0.9em;
+}
+
+.mdv-body dd {
+  margin: 0.3em 0 0 1.6em;
+  color: var(--mdv-fg-muted);
+}
+
+/* Task lists — GFM emits a bare disabled checkbox as the item's first child. */
+.mdv-body li:has(> input[type='checkbox']:first-child) {
+  list-style: none;
+  margin-left: -1.6em;
+  padding-left: 0;
+}
+
+.mdv-body input[type='checkbox'] {
+  appearance: none;
+  flex: none;
+  display: inline-block;
+  position: relative;
+  width: 1.05em;
+  height: 1.05em;
+  margin: 0 0.5em 0 0;
+  vertical-align: -0.16em;
+  border: 1px solid var(--mdv-border-strong);
+  border-radius: 0.28em;
+  background-color: var(--mdv-surface);
+  cursor: default;
+  transition: background-color var(--mdv-dur) ease,
+    border-color var(--mdv-dur) ease;
+}
+
+.mdv-body input[type='checkbox']:checked {
+  background-color: var(--mdv-accent);
+  border-color: var(--mdv-accent);
+}
+
+.mdv-body input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 33%;
+  top: 12%;
+  width: 0.26em;
+  height: 0.52em;
+  border: solid var(--mdv-on-accent);
+  border-width: 0 0.13em 0.13em 0;
+  transform: rotate(42deg);
+}
+
+.mdv-body input[type='checkbox']:disabled {
+  opacity: 1;
+}
+
+/* ==========================================================================
+   8. Blockquote, rule, media, disclosure
+   ========================================================================== */
+
 .mdv-body blockquote {
-  padding: 0 1em;
-  color: var(--mdv-muted);
-  border-left: 0.25em solid var(--mdv-border);
+  padding: 0.1em 0 0.1em 1.1em;
+  border-left: 3px solid var(--mdv-border-strong);
+  color: var(--mdv-fg-muted);
 }
 
-.mdv-body code {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
-  font-size: 0.875em;
-  padding: 0.2em 0.4em;
-  border-radius: 6px;
-  background: var(--mdv-code-bg);
+.mdv-body blockquote > :first-child {
+  margin-top: 0;
 }
 
-.mdv-body pre {
-  padding: 16px;
-  overflow-x: auto;
-  border-radius: 6px;
-  background: var(--mdv-code-bg);
-  line-height: 1.45;
+.mdv-body blockquote > :last-child {
+  margin-bottom: 0;
 }
 
-.mdv-body pre code {
-  padding: 0;
-  background: none;
-  font-size: 100%;
-}
-
-.mdv-body table {
-  border-collapse: collapse;
-  display: block;
-  width: max-content;
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.mdv-body th,
-.mdv-body td {
-  padding: 6px 13px;
-  border: 1px solid var(--mdv-border);
-}
-
-.mdv-body th {
-  font-weight: 600;
-  background: var(--mdv-code-bg);
-}
-
-.mdv-body img {
-  max-width: 100%;
+.mdv-body blockquote blockquote {
+  margin-top: 0.7em;
 }
 
 .mdv-body hr {
   height: 1px;
   border: 0;
-  margin: 24px 0;
-  background: var(--mdv-border);
+  margin: 2.6em 0;
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    var(--mdv-border-strong) 18%,
+    var(--mdv-border-strong) 82%,
+    transparent
+  );
+}
+
+.mdv-body img,
+.mdv-body svg,
+.mdv-body video {
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+.mdv-body p > img:only-child {
+  display: block;
+  margin-inline: auto;
+  border-radius: var(--mdv-radius);
+}
+
+.mdv-body figcaption {
+  font-size: 0.875em;
+  color: var(--mdv-fg-muted);
+  text-align: center;
+  margin-top: 0.6em;
+}
+
+.mdv-body details {
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius);
+  padding: 0.75em 1em;
+  background-color: var(--mdv-surface-alt);
+}
+
+.mdv-body summary {
+  font-weight: 650;
+  cursor: pointer;
+  margin: -0.75em -1em;
+  padding: 0.75em 1em;
+}
+
+.mdv-body details[open] > summary {
+  margin-bottom: 0.4em;
+  border-bottom: 1px solid var(--mdv-border);
+}
+
+/* ==========================================================================
+   9. Code
+   ========================================================================== */
+
+.mdv-body code,
+.mdv-body pre,
+.mdv-body samp,
+.mdv-body tt {
+  font-family: var(--mdv-font-mono);
+  font-variant-ligatures: none;
+}
+
+.mdv-body code {
+  font-size: 0.86em;
+  padding: 0.18em 0.4em;
+  border-radius: var(--mdv-radius-sm);
+  background-color: var(--mdv-surface);
+  border: 1px solid var(--mdv-border);
+  white-space: break-spaces;
+}
+
+.mdv-body pre {
+  font-size: 0.86em;
+  line-height: 1.55;
+  padding: 1em 1.15em;
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius);
+  background-color: var(--mdv-surface);
+  color: var(--mdv-fg);
+  overflow-x: auto;
+  white-space: pre;
+  tab-size: 2;
+}
+
+.mdv-body pre code {
+  display: block;
+  font-size: inherit;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  white-space: inherit;
+  color: inherit;
+}
+
+.mdv-body blockquote pre,
+.mdv-body li pre {
+  background-color: var(--mdv-bg);
+}
+
+/* ==========================================================================
+   10. highlight.js token theme
+   ========================================================================== */
+
+.mdv-body .hljs {
+  display: block;
+  color: var(--mdv-fg);
+  background: none;
+}
+
+.mdv-body .hljs-comment,
+.mdv-body .hljs-quote {
+  color: var(--mdv-tk-comment);
+  font-style: italic;
+}
+
+.mdv-body .hljs-doctag {
+  color: var(--mdv-tk-comment);
+  font-weight: 650;
+}
+
+.mdv-body .hljs-keyword,
+.mdv-body .hljs-selector-tag,
+.mdv-body .hljs-operator {
+  color: var(--mdv-tk-keyword);
+}
+
+.mdv-body .hljs-string,
+.mdv-body .hljs-regexp,
+.mdv-body .hljs-char.escape_,
+.mdv-body .hljs-subst {
+  color: var(--mdv-tk-string);
+}
+
+.mdv-body .hljs-number,
+.mdv-body .hljs-literal,
+.mdv-body .hljs-variable,
+.mdv-body .hljs-template-variable,
+.mdv-body .hljs-attr,
+.mdv-body .hljs-selector-attr,
+.mdv-body .hljs-selector-pseudo {
+  color: var(--mdv-tk-number);
+}
+
+.mdv-body .hljs-title,
+.mdv-body .hljs-title.function_,
+.mdv-body .hljs-function .hljs-title,
+.mdv-body .hljs-section,
+.mdv-body .hljs-selector-id,
+.mdv-body .hljs-selector-class {
+  color: var(--mdv-tk-title);
+}
+
+.mdv-body .hljs-title.class_,
+.mdv-body .hljs-built_in,
+.mdv-body .hljs-type,
+.mdv-body .hljs-class .hljs-title,
+.mdv-body .hljs-symbol,
+.mdv-body .hljs-bullet,
+.mdv-body .hljs-link {
+  color: var(--mdv-tk-builtin);
+}
+
+.mdv-body .hljs-tag,
+.mdv-body .hljs-name,
+.mdv-body .hljs-attribute {
+  color: var(--mdv-tk-tag);
+}
+
+.mdv-body .hljs-meta,
+.mdv-body .hljs-meta .hljs-keyword,
+.mdv-body .hljs-meta .hljs-string,
+.mdv-body .hljs-comment .hljs-doctag {
+  color: var(--mdv-tk-meta);
+}
+
+.mdv-body .hljs-params,
+.mdv-body .hljs-punctuation,
+.mdv-body .hljs-property {
+  color: var(--mdv-tk-punct);
+}
+
+.mdv-body .hljs-addition {
+  color: var(--mdv-tk-addition);
+  background-color: var(--mdv-tk-addition-bg);
+  display: inline-block;
+  width: 100%;
+}
+
+.mdv-body .hljs-deletion {
+  color: var(--mdv-tk-deletion);
+  background-color: var(--mdv-tk-deletion-bg);
+  display: inline-block;
+  width: 100%;
+}
+
+.mdv-body .hljs-emphasis {
+  font-style: italic;
+}
+
+.mdv-body .hljs-strong {
+  font-weight: 650;
+}
+
+.mdv-body .hljs-link {
+  text-decoration: underline;
+}
+
+/* ==========================================================================
+   11. Tables
+
+   `display: block` turns the table itself into the scroll container, so a wide
+   table scrolls on its own instead of pushing the page sideways.
+   ========================================================================== */
+
+.mdv-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  border-spacing: 0;
+  font-size: 0.95em;
+  font-variant-numeric: tabular-nums;
+}
+
+.mdv-body th,
+.mdv-body td {
+  padding: 0.5em 0.85em;
+  border: 1px solid var(--mdv-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.mdv-body th {
+  font-weight: 650;
+  background-color: var(--mdv-surface);
+  white-space: nowrap;
+}
+
+.mdv-body tbody tr:nth-child(even) {
+  background-color: var(--mdv-surface-alt);
+}
+
+.mdv-body th > :last-child,
+.mdv-body td > :last-child {
+  margin-bottom: 0;
+}
+
+/* GFM column alignment ships as an `align` attribute. */
+.mdv-body th[align='left'],
+.mdv-body td[align='left'] {
+  text-align: left;
+}
+
+.mdv-body th[align='center'],
+.mdv-body td[align='center'] {
+  text-align: center;
+}
+
+.mdv-body th[align='right'],
+.mdv-body td[align='right'] {
+  text-align: right;
+}
+
+/* ==========================================================================
+   12. Scrollbars & selection
+   ========================================================================== */
+
+.mdv-body pre::-webkit-scrollbar,
+.mdv-body table::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+
+.mdv-body pre::-webkit-scrollbar-track,
+.mdv-body table::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mdv-body pre::-webkit-scrollbar-thumb,
+.mdv-body table::-webkit-scrollbar-thumb {
+  background-color: var(--mdv-scrollbar);
+  border-radius: 5px;
+}
+
+#mdv-root ::selection {
+  background-color: var(--mdv-selection);
+}
+
+/* ==========================================================================
+   13. Motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  #mdv-root,
+  #mdv-root * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================================================
+   14. Print — force the light palette regardless of the active theme.
+   ========================================================================== */
+
+@media print {
+  :root[data-mdv-theme='light'],
+  :root[data-mdv-theme='dark'] {
+    color-scheme: light;
+
+    --mdv-bg: #ffffff;
+    --mdv-surface: #f6f8fa;
+    --mdv-surface-alt: #ffffff;
+    --mdv-fg: #111418;
+    --mdv-fg-muted: #4c555f;
+    --mdv-border: #c4ccd4;
+    --mdv-border-strong: #9aa4ae;
+    --mdv-accent: #0a3f92;
+    --mdv-accent-hover: #0a3f92;
+    --mdv-visited: #0a3f92;
+    --mdv-on-accent: #ffffff;
+    --mdv-mark-bg: #fff3c4;
+
+    --mdv-tk-keyword: #8f1a24;
+    --mdv-tk-string: #0a3069;
+    --mdv-tk-comment: #4f5862;
+    --mdv-tk-number: #04408a;
+    --mdv-tk-title: #5c2ba3;
+    --mdv-tk-builtin: #6f2a00;
+    --mdv-tk-tag: #0b4a20;
+    --mdv-tk-meta: #4c555f;
+    --mdv-tk-punct: #3a434c;
+    --mdv-tk-addition: #0b4a20;
+    --mdv-tk-addition-bg: #eefaf1;
+    --mdv-tk-deletion: #711018;
+    --mdv-tk-deletion-bg: #fdeeed;
+  }
+
+  html,
+  body,
+  #mdv-root {
+    background: #ffffff;
+    color: var(--mdv-fg);
+  }
+
+  .mdv-body {
+    max-width: none;
+    padding: 0;
+    font-size: 11pt;
+  }
+
+  .mdv-body pre,
+  .mdv-body blockquote,
+  .mdv-body table,
+  .mdv-body tr,
+  .mdv-body img,
+  .mdv-body figure,
+  .mdv-body details {
+    break-inside: avoid;
+  }
+
+  .mdv-body pre {
+    white-space: pre-wrap;
+    overflow-x: visible;
+  }
+
+  .mdv-body table {
+    display: table;
+    width: 100%;
+    overflow-x: visible;
+  }
+
+  .mdv-body h1,
+  .mdv-body h2,
+  .mdv-body h3,
+  .mdv-body h4,
+  .mdv-body h5,
+  .mdv-body h6 {
+    break-after: avoid;
+    break-inside: avoid;
+  }
 }

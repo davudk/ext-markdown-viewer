@@ -31,18 +31,15 @@ const marked = new Marked(
 );
 
 /**
- * DOMPurify's default allowlist covers everything marked emits *except* a couple
- * of GFM-specific bits, so the additions are deliberately narrow — widening the
- * tag list would be the easy way to reintroduce script execution.
+ * Checked against DOMPurify 3.4.12: its defaults already keep the two bits of
+ * GFM output that a stricter allowlist would eat — `<input type=checkbox
+ * disabled>` from task lists, and `align` on th/td from `|:---:|` column
+ * alignment. `ADD_ATTR` pins them anyway, so a future DOMPurify tightening its
+ * defaults can't silently empty out every task list and un-align every table.
  *
- * - `input` + `type`/`checked`/`disabled` — GFM task lists render as disabled
- *   checkboxes. `input` is allowed by default but the attributes are worth
- *   pinning so a DOMPurify update can't silently empty out every task list.
- * - `align` — GFM's `|:---:|` column alignment lands as an attribute on th/td.
- *
- * Everything dangerous stays off: no `ALLOWED_TAGS` override, so script/iframe/
- * object are still dropped, and DOMPurify strips every `on*` handler and
- * javascript: URL regardless of what we add here.
+ * Deliberately *not* done: no `ALLOWED_TAGS` override. Supplying one replaces
+ * the whole allowlist, and rebuilding it by hand is how script/iframe/object
+ * sneak back in. Everything here only narrows or pins.
  */
 const PURIFY_CONFIG: Config = {
   USE_PROFILES: { html: true },

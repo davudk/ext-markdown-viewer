@@ -28,6 +28,11 @@ export function sendMessage<T>(message: Message): Promise<T> {
   return chrome.runtime.sendMessage(message) as Promise<T>;
 }
 
-/** Output filenames produced by the build; injected via chrome.scripting. */
+/**
+ * Build output paths, injected via chrome.scripting. These are the *emitted*
+ * filenames, not the source ones: WXT puts CSS entrypoints under `assets/`
+ * while scripts land at the root. `scripts/check-build.mjs` asserts both exist
+ * in the built extension, because a wrong path here fails only at runtime.
+ */
 export const RENDERER_JS = 'renderer.js';
-export const RENDERER_CSS = 'viewer.css';
+export const RENDERER_CSS = 'assets/viewer.css';

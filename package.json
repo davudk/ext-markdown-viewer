@@ -18,7 +18,8 @@
     "compile": "tsc --noEmit",
     "test": "node --experimental-strip-types --test \"test/**/*.test.ts\"",
     "audit:network": "node scripts/audit-network.mjs",
-    "verify": "npm run compile && npm run test && npm run build && npm run audit:network",
+    "check:build": "node scripts/check-build.mjs",
+    "verify": "npm run compile && npm run test && npm run build && npm run check:build && npm run audit:network",
     "postinstall": "wxt prepare"
   },
   "dependencies": {
