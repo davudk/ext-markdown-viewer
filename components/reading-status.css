@@ -1,0 +1,149 @@
+/* Markdown Viewer — reading status: the progress bar and the word-count chip.
+
+   Both are chrome, so every colour is a --mdv-* token from viewer.css and the
+   theme follows the `data-mdv-theme` attribute on <html> with no palette of its
+   own and no prefers-color-scheme query. Typography is the UI stack at a fixed
+   size rather than the reader's document settings, for the same reason the
+   sidebar's is: this is a label about the document, not part of it.
+
+   Selectors are a class heavier than they need to be. This file and viewer.css
+   reach the page by different routes, so their order is not guaranteed and
+   nothing here may depend on winning a tie. */
+
+/* ==========================================================================
+   1. The layer
+
+   One fixed box covering the viewport, holding both pieces.
+
+   Fixed rather than in flow, and one root rather than two siblings: `.mdv >
+   :not(nav)` in viewer.css grants `flex: 1 1 auto` to every non-nav child of
+   the shell, so anything laid out here would become a second document column.
+   Out of flow it also cannot shift the document by a pixel, whatever it
+   contains.
+   ========================================================================== */
+
+.mdv-reading {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  /* The layer spans the whole window, so it must be invisible to the pointer;
+     the chip opts back in for itself. */
+  pointer-events: none;
+  font-family: var(--mdv-font-sans);
+}
+
+/* ==========================================================================
+   2. Progress bar
+
+   Pinned to the very top edge, above the toolbar (z-index 20) and the search
+   panel (30) but only two pixels tall, so it covers nothing either of them
+   needs. The fill is scaled rather than sized: a transform is the one property
+   that animates without touching layout, so a scroll can never reflow the page.
+   ========================================================================== */
+
+.mdv-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  overflow: hidden;
+}
+
+.mdv-progress-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-color: var(--mdv-accent);
+  opacity: 0.7;
+  /* Falls back to a bar at zero rather than to an unset transform, which would
+     paint the full width for one frame before the first scroll handler runs. */
+  transform: scaleX(var(--mdv-progress, 0));
+  transform-origin: left center;
+  /* Short enough to be imperceptible while scrolling, long enough to glide when
+     an anchor link jumps halfway down the document. */
+  transition: transform 90ms linear;
+}
+
+/* ==========================================================================
+   3. Word count and reading time
+
+   Bottom right: the toolbar owns the top right corner and the search panel
+   drops out of it, the sidebar owns the left edge. Muted until approached, so
+   it reads as a note about the document rather than as part of it.
+   ========================================================================== */
+
+.mdv-reading-stats {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  max-width: min(22rem, 70vw);
+  margin: 0;
+  padding: 0.4em 0.6em;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35em;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--mdv-fg-muted);
+  background-color: var(--mdv-surface);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-sm);
+  /* Selectable and hoverable, unlike the layer around it. */
+  pointer-events: auto;
+  opacity: 0.55;
+  transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease;
+}
+
+.mdv-reading-stats:hover {
+  opacity: 1;
+  color: var(--mdv-fg);
+}
+
+.mdv-reading-dot {
+  opacity: 0.6;
+}
+
+.mdv-reading-note {
+  font-weight: 400;
+  opacity: 0.85;
+}
+
+/* Nothing to hover on a touch screen, so the chip has to be legible standing. */
+@media (hover: none) {
+  .mdv-reading-stats {
+    opacity: 0.8;
+  }
+}
+
+/* Below the point where the sidebar gives up, the corner is the only place the
+   reader can still reach the document's own scrollbar. The chip yields. */
+@media (max-width: 640px) {
+  .mdv-reading-stats {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   4. Motion and print
+   ========================================================================== */
+
+/* viewer.css already clamps every transition under this preference; repeated
+   here so the rule holds even when this stylesheet is the only one that loaded,
+   and because a bar that eases is the one thing on screen that is pure motion. */
+@media (prefers-reduced-motion: reduce) {
+  .mdv-progress-fill,
+  .mdv-reading-stats {
+    transition: none;
+  }
+}
+
+/* Chrome, so it never reaches paper. viewer.css strips `[data-mdv-chrome]`
+   already; this is the same statement made where it can be read. */
+@media print {
+  .mdv-reading {
+    display: none;
+  }
+}

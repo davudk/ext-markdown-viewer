@@ -1,7 +1,8 @@
 /* Markdown Viewer — the affordances layered over the document.
 
-   Only the chrome lives here: the toolbar, the per-block copy buttons and the
-   heading anchors. Everything about the document itself is in
+   Only the chrome lives here: the toolbar, the per-block copy buttons, the
+   heading anchors and the external-link indicator. Everything about the
+   document itself is in
    entrypoints/viewer.css, and every colour below comes from the `--mdv-*`
    tokens it defines, so both themes are covered without a single media query.
 
@@ -232,7 +233,45 @@
 }
 
 /* ==========================================================================
-   5. Raw source view
+   5. External link indicator
+
+   Set by `markExternalLinks` on links that leave the document, and on nothing
+   else — in-page `#anchors` and relative links are unmarked, which is what
+   distinguishes them. `ALLOW_DATA_ATTR: false` in the sanitizer means an
+   untrusted document cannot mint the attribute for itself.
+
+   A glyph rather than an icon: `↗` is in every system font the viewer uses, it
+   inherits the link's colour and size for free, and the alternative — an inline
+   SVG per link — would mean touching every anchor node rather than setting one
+   attribute on it. The `/ ''` supplies empty alternative text, so a screen
+   reader does not read "north east arrow" after every outbound link; the
+   information is decorative, and the href is already announced.
+   ========================================================================== */
+
+.mdv-body a[data-mdv-external]::after {
+  content: '\2197' / '';
+  display: inline-block;
+  font-size: 0.78em;
+  /* No line-height contribution, so a marked link cannot open up the line it
+     sits on and make the paragraph around it ripple. */
+  line-height: 0;
+  margin-left: 0.12em;
+  vertical-align: 0.28em;
+  opacity: 0.65;
+  /* The arrow is not part of the link text; underlining it looks like a typo. */
+  text-decoration: none;
+}
+
+/* On paper there is no "leaves the document" — nothing is clickable and the
+   destination is not shown either way. */
+@media print {
+  .mdv-body a[data-mdv-external]::after {
+    content: none;
+  }
+}
+
+/* ==========================================================================
+   6. Raw source view
 
    The source is the whole document here, so it drops the code-block framing
    and wraps instead of scrolling — a raw README should never need two axes.
@@ -251,7 +290,7 @@
 }
 
 /* ==========================================================================
-   6. Motion and print
+   7. Motion and print
    ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {

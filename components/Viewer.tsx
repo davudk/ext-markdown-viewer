@@ -11,9 +11,13 @@ import { renderMarkdown } from '@/lib/markdown';
 import { onSettingsChanged, saveSettings, type Settings } from '@/lib/settings';
 
 import { Document } from './Document';
+import type { OpenedDocument } from './FolderBrowser';
+import { HeadingFold } from './HeadingFold';
 import { Lightbox } from './Lightbox';
+import { Presentation } from './Presentation';
+import { ReadingStatus } from './ReadingStatus';
 import { Search } from './Search';
-import { Toc } from './Toc';
+import { Sidebar } from './Sidebar';
 
 /**
  * The viewer shell: layout, settings plumbing, and the state features share.
@@ -34,8 +38,22 @@ export function Viewer({
   initialSettings: Settings;
 }) {
   const [settings, setSettings] = useState(initialSettings);
-  const [source, setSource] = useState(initialSource);
   const [showRaw, setShowRaw] = useState(false);
+
+  /**
+   * The document on screen. Normally the page's own file, but the Files tab can
+   * hand us one read through a directory handle — which has no page URL of its
+   * own. Everything URL-keyed (scroll memory, live reload, link resolution)
+   * reads `url` from here rather than `location`, so those features describe the
+   * document actually being displayed instead of the one the tab was opened on.
+   */
+  const [opened, setOpened] = useState<OpenedDocument | null>(null);
+
+  /** The page's own document, kept in state so live reload can replace it. */
+  const [pageSource, setPageSource] = useState(initialSource);
+
+  const source = opened?.source ?? pageSource;
+  const url = opened?.url ?? location.href;
 
   // Reparsing on a settings change would stall a large document every time the
   // font size is nudged; typography is applied through CSS variables instead.
@@ -44,10 +62,10 @@ export function Viewer({
   useEffect(() => onSettingsChanged(setSettings), []);
 
   // A single heading is an outline of one — noise rather than navigation.
-  const hasToc = settings.showToc && doc.headings.length > 1 && !showRaw;
+  const hasSidebar = settings.showToc && !showRaw;
 
   useScrollMemory({
-    url: location.href,
+    url,
     enabled: settings.rememberScroll,
     // The raw view has none of the headings positions are measured against, so
     // restoring into it would land nowhere meaningful.
@@ -55,10 +73,13 @@ export function Viewer({
   });
 
   useLiveReload({
+    // Always the page's own address — the hook refuses anything else by design.
+    // A file opened through a directory handle has no fetchable URL, so polling
+    // is switched off rather than pointed somewhere it cannot go.
     url: location.href,
-    enabled: settings.liveReload,
-    source,
-    onChange: setSource,
+    enabled: settings.liveReload && opened === null,
+    source: pageSource,
+    onChange: setPageSource,
   });
 
   useKeyboardShortcuts({
@@ -69,23 +90,42 @@ export function Viewer({
 
   return (
     <div
-      className={hasToc ? 'mdv mdv-with-toc' : 'mdv'}
+      className={hasSidebar ? 'mdv mdv-with-toc' : 'mdv'}
       style={typographyVars(settings)}
     >
-      {hasToc ? <Toc headings={doc.headings} /> : null}
+      {hasSidebar ? (
+        <Sidebar
+          headings={doc.headings}
+          documentUrl={url}
+          source={source}
+          onOpenDocument={setOpened}
+        />
+      ) : null}
 
       <Document
         html={doc.html}
         source={source}
         showRaw={showRaw}
+        externalLinks={settings.externalLinks}
         onToggleRaw={() => setShowRaw((raw) => !raw)}
       />
 
-      {/* Both are position-fixed overlays rather than flex children, so they sit
-          outside the document track and cannot become a second column. Search is
-          pointless over raw source, which has no headings to group results by. */}
+      {/* Overlays and passes over the rendered body, not flex children: each is
+          fixed-position or portalled, so none of them becomes a second column.
+          They take `html` as a staleness signal and read the live body. */}
       {showRaw ? null : <Search headings={doc.headings} />}
       <Lightbox enabled={settings.lightbox && !showRaw} />
+      <HeadingFold html={doc.html} enabled={settings.headingFold && !showRaw} />
+      <ReadingStatus
+        html={doc.html}
+        stats={settings.readingStats && !showRaw}
+        progress={settings.readingProgress && !showRaw}
+      />
+      <Presentation
+        html={doc.html}
+        split={settings.slideSplit}
+        enabled={settings.presentation && !showRaw}
+      />
     </div>
   );
 }

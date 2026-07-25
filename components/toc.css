@@ -1,124 +1,13 @@
-/* Markdown Viewer — table-of-contents sidebar.
+/* Markdown Viewer — outline panel.
 
-   Every colour is a --mdv-* token from viewer.css, so the sidebar follows the
+   Only the list. The sidebar box, its header, the collapse rail, the tab strip
+   and the shared scroller all moved to sidebar.css when the table of contents
+   became one tab among several; what is left here is what is specific to
+   headings.
+
+   Every colour is a --mdv-* token from viewer.css, so the panel follows the
    `data-mdv-theme` attribute on <html> with no palette of its own and no
-   prefers-color-scheme query.
-
-   Typography deliberately does *not* follow the reader's document settings:
-   --mdv-font-body and --mdv-font-size are the measure they chose for prose, and
-   a serif 22px outline is a worse index than a small sans one. This is chrome,
-   so it uses the UI stack at a fixed size. */
-
-.mdv-toc {
-  --mdv-toc-width: clamp(12.5rem, 20vw, 17rem);
-  --mdv-toc-rail: 2.75rem;
-
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  /* Sticky needs a box shorter than the container to have anywhere to stick;
-     as a stretched flex item it would be as tall as the whole document. */
-  align-self: flex-start;
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  width: var(--mdv-toc-width);
-  height: 100vh;
-  border-right: 1px solid var(--mdv-border);
-  background-color: var(--mdv-surface-alt);
-  font-family: var(--mdv-font-sans);
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  transition: width var(--mdv-dur) ease;
-}
-
-.mdv-toc-is-collapsed {
-  width: var(--mdv-toc-rail);
-}
-
-.mdv-toc [hidden] {
-  display: none;
-}
-
-/* ==========================================================================
-   Header
-   ========================================================================== */
-
-.mdv-toc-head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex: none;
-  height: 2.9rem;
-  padding-inline: 0.5rem;
-  border-bottom: 1px solid var(--mdv-border);
-}
-
-.mdv-toc-heading {
-  font-size: 0.6875rem;
-  font-weight: 650;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--mdv-fg-muted);
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.mdv-toc-is-collapsed .mdv-toc-heading {
-  display: none;
-}
-
-.mdv-toc-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 1.75rem;
-  height: 1.75rem;
-  padding: 0;
-  border: 0;
-  border-radius: var(--mdv-radius-sm);
-  background: none;
-  color: var(--mdv-fg-muted);
-  cursor: pointer;
-  transition: background-color var(--mdv-dur) ease, color var(--mdv-dur) ease;
-}
-
-.mdv-toc-toggle:hover {
-  background-color: var(--mdv-surface);
-  color: var(--mdv-fg);
-}
-
-/* ==========================================================================
-   Outline
-
-   The list scrolls independently of the document: the sidebar is exactly one
-   viewport tall, so this is the only part of it that can overflow.
-   ========================================================================== */
-
-.mdv-toc-scroll {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0.5rem 0.4rem 2.5rem;
-  scrollbar-width: thin;
-  scrollbar-color: var(--mdv-scrollbar) transparent;
-}
-
-.mdv-toc-scroll::-webkit-scrollbar {
-  width: 9px;
-}
-
-.mdv-toc-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.mdv-toc-scroll::-webkit-scrollbar-thumb {
-  background-color: var(--mdv-scrollbar);
-  border-radius: 5px;
-}
+   prefers-color-scheme query. */
 
 .mdv-toc-list {
   list-style: none;
@@ -163,28 +52,4 @@
   background-color: var(--mdv-surface);
   font-weight: 650;
   box-shadow: inset 2px 0 0 0 var(--mdv-accent);
-}
-
-/* The global rule offsets the ring outwards, which the scroll container clips. */
-.mdv-toc-scroll :focus-visible {
-  outline-offset: -1px;
-}
-
-/* ==========================================================================
-   Viewport and media
-
-   Below the narrow breakpoint the outline would leave the document a column too
-   thin to read, and there is no room for both. The document wins.
-   ========================================================================== */
-
-@media (max-width: 640px) {
-  .mdv-toc {
-    display: none;
-  }
-}
-
-@media print {
-  .mdv-toc {
-    display: none;
-  }
 }

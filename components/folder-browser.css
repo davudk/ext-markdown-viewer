@@ -1,0 +1,161 @@
+/* Markdown Viewer — Files panel.
+
+   The tree is a flat list of rows whose indentation comes from an
+   `--mdv-folder-depth` custom property set per row, so one padding rule covers
+   every level and nesting costs no extra markup. Rows are <button> or, when the
+   file's real address is known, <a> — they are styled together deliberately, so
+   which one a row happens to be is invisible to the reader.
+
+   Colours are --mdv-* tokens from viewer.css; the panel shell (scroller, empty
+   state) comes from sidebar.css. */
+
+.mdv-folder-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: none;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--mdv-border);
+}
+
+.mdv-folder-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 650;
+  color: var(--mdv-fg);
+}
+
+.mdv-folder-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.25rem 0.25rem 1rem;
+}
+
+.mdv-folder-action {
+  margin-inline: 0.65rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--mdv-border-strong);
+  border-radius: var(--mdv-radius-sm);
+  background-color: var(--mdv-surface);
+  color: var(--mdv-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--mdv-dur) ease, border-color var(--mdv-dur) ease;
+}
+
+.mdv-folder-action:hover {
+  border-color: var(--mdv-accent);
+  color: var(--mdv-accent);
+}
+
+.mdv-folder-quiet {
+  flex: none;
+  margin-inline: 0.65rem;
+  padding: 0.15rem 0.3rem;
+  border: 0;
+  border-radius: var(--mdv-radius-sm);
+  background: none;
+  color: var(--mdv-fg-muted);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: color var(--mdv-dur) ease, background-color var(--mdv-dur) ease;
+}
+
+.mdv-folder-bar .mdv-folder-quiet {
+  margin-inline: 0;
+}
+
+.mdv-folder-quiet:hover {
+  background-color: var(--mdv-surface);
+  color: var(--mdv-fg);
+}
+
+.mdv-folder-error,
+.mdv-folder-note {
+  margin: 0.5rem 0.65rem 0;
+  color: var(--mdv-fg-muted);
+  font-size: 0.75rem;
+  text-wrap: pretty;
+}
+
+.mdv-folder-error {
+  color: var(--mdv-tk-deletion);
+}
+
+/* ==========================================================================
+   Rows
+   ========================================================================== */
+
+.mdv-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  /* Depth is a number, so the indent is one multiplication rather than a rule
+     per level — and levels below the deepest styled one cannot look wrong. */
+  padding: 0.26rem 0.5rem 0.26rem
+    calc(0.35rem + var(--mdv-folder-depth, 0) * 0.75rem);
+  border: 0;
+  border-radius: var(--mdv-radius-sm);
+  background: none;
+  color: var(--mdv-fg-muted);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  /* Reserved so the current-file marker cannot shift the text sideways. */
+  box-shadow: inset 2px 0 0 0 transparent;
+  transition: color var(--mdv-dur) ease, background-color var(--mdv-dur) ease;
+}
+
+.mdv-folder-row:hover {
+  background-color: var(--mdv-surface);
+  color: var(--mdv-fg);
+}
+
+.mdv-folder-row[data-kind='directory'] {
+  color: var(--mdv-fg);
+  font-weight: 600;
+}
+
+.mdv-folder-row[aria-current='page'] {
+  color: var(--mdv-accent);
+  background-color: var(--mdv-surface);
+  font-weight: 650;
+  box-shadow: inset 2px 0 0 0 var(--mdv-accent);
+}
+
+.mdv-folder-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdv-folder-caret,
+.mdv-folder-icon {
+  flex: none;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-folder-caret {
+  transition: transform var(--mdv-dur) ease;
+}
+
+.mdv-folder-caret[data-open] {
+  transform: rotate(90deg);
+}
+
+/* Reading a large directory is the one operation here with any latency worth
+   showing. Opacity rather than a spinner: no animation to leak into print, and
+   nothing that moves under a reader who asked not to be moved. */
+.mdv-folder-caret[data-busy] {
+  opacity: 0.4;
+}

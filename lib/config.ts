@@ -126,6 +126,97 @@ export type ExportFormat = (typeof EXPORT_FORMATS)[number]['value'];
 /** How many search matches to mark before giving up on a pathological query. */
 export const SEARCH_MATCH_LIMIT = 2000;
 
+/**
+ * Reading speed for whitespace-delimited prose, in words per minute.
+ *
+ * Middling silent-reading rates for adults land between 200 and 260 wpm on
+ * ordinary text; documentation sits at the slower end of that, so this is
+ * deliberately not the flattering number.
+ */
+export const READING_WORDS_PER_MINUTE = 220;
+
+/**
+ * Reading speed for CJK text, in *characters* per minute.
+ *
+ * A separate rate because a Chinese, Japanese or Korean character carries far
+ * more than a Latin one — timing them at the same rate as words would report a
+ * page of Chinese as a ten-second read.
+ */
+export const READING_CJK_PER_MINUTE = 480;
+
+/**
+ * Heading levels that get a fold control.
+ *
+ * All six rather than `TOC_LEVELS`: an `h5` still owns the paragraphs under it,
+ * and a section that cannot be collapsed because it is too deep to appear in
+ * the sidebar would be arbitrary.
+ */
+export const FOLD_LEVELS = [1, 2, 3, 4, 5, 6];
+
+/* -------------------------------------------------------------------------- */
+/* Sidebar                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The sidebar's tabs, in the order they are presented.
+ *
+ * Only the identity and the label live here; `Sidebar.tsx` maps each id to the
+ * component that draws it. Adding a tab is an entry here plus a line in that
+ * map — deliberately, because a third one (Search) is already planned.
+ */
+export const SIDEBAR_TABS = [
+  { id: 'outline', label: 'Outline' },
+  { id: 'files', label: 'Files' },
+] as const;
+
+export type SidebarTabId = (typeof SIDEBAR_TABS)[number]['id'];
+
+export const DEFAULT_SIDEBAR_TAB: SidebarTabId = 'outline';
+
+/** Sidebar UI state (which tab is open), kept out of `Settings` — it is not a preference. */
+export const SIDEBAR_STATE_KEY = 'sidebar';
+
+/* -------------------------------------------------------------------------- */
+/* Folder browser                                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Directories never listed, whatever they contain. Dotted names are excluded by
+ * rule rather than by list; these two are the ones that are not dotted and are
+ * large enough that expanding one is indistinguishable from a hang.
+ */
+export const FOLDER_SKIP_DIRECTORIES = ['node_modules', '.git'];
+
+/**
+ * Entries kept from a single directory. A generated output folder can hold tens
+ * of thousands of files, and the cost is not the read — it is the rows. The
+ * browser reports the overflow rather than pretending the directory ends here.
+ */
+export const FOLDER_ENTRY_LIMIT = 500;
+
+/**
+ * Where a picked directory handle is kept.
+ *
+ * IndexedDB, because a `FileSystemDirectoryHandle` is structured-cloneable but
+ * not JSON — chrome.storage cannot hold one. See `lib/folder.ts` for what this
+ * does and does not survive; the short version is that a content script writes
+ * under the *page's* origin, so this is per-origin storage, not per-extension.
+ */
+export const FOLDER_DB_NAME = 'mdv-folder';
+export const FOLDER_STORE_NAME = 'handles';
+export const FOLDER_HANDLE_KEY = 'current';
+
+/**
+ * Identity scheme for a document read through a directory handle rather than
+ * fetched from an address.
+ *
+ * Deliberately absent from `SUPPORTED_PROTOCOLS`: such a document has no URL to
+ * re-request, so live reload must decline it rather than poll the page it
+ * replaced. `documentKey()` still parses it, so scroll memory keeps working and
+ * each file in the folder gets its own entry.
+ */
+export const FOLDER_DOCUMENT_SCHEME = 'mdv-folder:';
+
 /* -------------------------------------------------------------------------- */
 /* Build output                                                                */
 /* -------------------------------------------------------------------------- */
@@ -211,8 +302,26 @@ export type Theme = 'light' | 'dark' | 'auto';
 export type FontFamily = 'system' | 'serif' | 'mono';
 export type ContentWidth = 'narrow' | 'normal' | 'wide' | 'full';
 
+/**
+ * Where presentation mode cuts one slide from the next.
+ *
+ * `auto` prefers `rule` and falls back to `heading`; see SLIDE_SPLIT_OPTIONS.
+ */
+export type SlideSplit = 'auto' | 'rule' | 'heading';
+
 export interface Settings {
   theme: Theme;
+  /**
+   * Which colour family the viewer draws in. Orthogonal to `theme`: the preset
+   * chooses the palette, `theme` still chooses which half of it is used.
+   */
+  themePreset: ThemePresetId;
+  /**
+   * A stylesheet the reader wrote, applied to rendered documents only. Stored
+   * verbatim so the editor round-trips what was typed; every path that applies
+   * it goes through `sanitizeCustomCss` first.
+   */
+  customCss: string;
   fontFamily: FontFamily;
   /** Base font size in px. Clamped to FONT_SIZE_RANGE on write. */
   fontSize: number;
@@ -237,10 +346,42 @@ export interface Settings {
   math: boolean;
   /** Click an image to open it full-size with keyboard navigation. */
   lightbox: boolean;
+  /**
+   * Mark links that leave the document with a small trailing indicator.
+   *
+   * Derived from the URL and the document's own address, never from a request:
+   * asking each host whether it exists would hand every one of them the fact
+   * that this document was opened.
+   */
+  externalLinks: boolean;
+  /** Offer presentation mode on rendered documents. */
+  presentation: boolean;
+  /** Where presentation mode cuts slides. */
+  slideSplit: SlideSplit;
+  /**
+   * Word count and reading time for the open document.
+   *
+   * Counted from the rendered text with code blocks left out; see
+   * `lib/reading.ts` for what that means and why.
+   */
+  readingStats: boolean;
+  /** A thin bar tracking how far through the document the reader has scrolled. */
+  readingProgress: boolean;
+  /**
+   * A fold control on every heading, collapsing the section under it.
+   *
+   * On by default even though it puts a control on every heading: the control
+   * is muted until the heading is approached, and a folding feature nobody can
+   * see is a folding feature nobody uses. Fold state is per-session — see
+   * `components/HeadingFold.tsx` for why it is deliberately not persisted.
+   */
+  headingFold: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'auto',
+  themePreset: 'default',
+  customCss: '',
   fontFamily: 'system',
   fontSize: 16,
   lineHeight: 1.65,
@@ -251,6 +392,12 @@ export const DEFAULT_SETTINGS: Settings = {
   mermaid: true,
   math: true,
   lightbox: true,
+  externalLinks: true,
+  presentation: true,
+  slideSplit: 'auto',
+  readingStats: true,
+  readingProgress: true,
+  headingFold: true,
 };
 
 /**
@@ -268,6 +415,24 @@ export const DOCUMENT_STATE_KEY = 'documents';
 
 /** How many documents' positions to remember before evicting the oldest. */
 export const DOCUMENT_STATE_LIMIT = 200;
+
+/**
+ * Per-document theme pins, kept apart from both settings and scroll memory for
+ * the same reason those two are apart: "unpin every document" must not be able
+ * to take a preference or a reading position with it.
+ */
+export const DOCUMENT_THEME_KEY = 'documentThemes';
+
+/**
+ * Lower than DOCUMENT_STATE_LIMIT on purpose. A scroll position is written for
+ * every document that is opened; a theme pin only exists because someone chose
+ * it, so the list is both far shorter in practice and one the user is expected
+ * to be able to read through on the options page.
+ */
+export const DOCUMENT_THEME_LIMIT = 50;
+
+/** Longest user stylesheet accepted, in characters. */
+export const CUSTOM_CSS_MAX_LENGTH = 20_000;
 
 interface Option<T> {
   value: T;
@@ -305,6 +470,26 @@ export const CONTENT_WIDTH_CH: Record<ContentWidth, string> = {
   full: 'none',
 };
 
+/**
+ * How presentation mode is told where one slide ends.
+ *
+ * `rule` is the convention every markdown presenter already uses — Marp,
+ * reveal.js, remark, Deckset and Pandoc all cut on `---` — and it is the only
+ * one that is *authored*: the writer put the break exactly where they wanted
+ * it. Heading splitting is a heuristic imposed on a document that was never
+ * written as a deck, which is why it is not the default on its own.
+ *
+ * It is also why the default is neither: almost no README carries a single
+ * `---`, and presenting one as a single wall of text is a worse answer than
+ * cutting at its section headings. `auto` takes the author's breaks when there
+ * are any and falls back to the outline when there are none.
+ */
+export const SLIDE_SPLIT_OPTIONS: ReadonlyArray<Option<SlideSplit>> = [
+  { value: 'auto', label: 'Automatic' },
+  { value: 'rule', label: 'Horizontal rules' },
+  { value: 'heading', label: 'Headings' },
+];
+
 export const FONT_SIZE_RANGE = { min: 12, max: 24, step: 1 };
 export const LINE_HEIGHT_RANGE = { min: 1.3, max: 2.1, step: 0.05 };
 
@@ -316,6 +501,435 @@ export const FONT_STACKS: Record<FontFamily, string> = {
     "'Iowan Old Style', 'Palatino Linotype', Palatino, Charter, 'Bitstream Charter', Georgia, ui-serif, serif",
   mono: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace",
 };
+
+/* -------------------------------------------------------------------------- */
+/* Theme presets                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every colour token `entrypoints/viewer.css` declares under
+ * `:root[data-mdv-theme='light'|'dark']`, minus the `--mdv-` prefix.
+ *
+ * A preset must supply all of them. Supplying a subset is the failure that
+ * looks like a bug rather than a missing feature: the document takes the new
+ * palette and the code blocks keep the old one, so `test/theme-presets.test.ts`
+ * asserts every palette covers this list exactly.
+ */
+export const THEME_TOKENS = [
+  'bg',
+  'surface',
+  'surface-alt',
+  'fg',
+  'fg-muted',
+  'border',
+  'border-strong',
+  'accent',
+  'accent-hover',
+  'visited',
+  'on-accent',
+  'selection',
+  'scrollbar',
+  'mark-bg',
+  'tk-keyword',
+  'tk-string',
+  'tk-comment',
+  'tk-number',
+  'tk-title',
+  'tk-builtin',
+  'tk-tag',
+  'tk-meta',
+  'tk-punct',
+  'tk-addition',
+  'tk-addition-bg',
+  'tk-deletion',
+  'tk-deletion-bg',
+] as const;
+
+export type ThemeToken = (typeof THEME_TOKENS)[number];
+
+/** Every value is an opaque `#rrggbb`, so contrast is computable without a browser. */
+export type ThemePalette = Record<ThemeToken, string>;
+
+export interface ThemePreset {
+  id: string;
+  label: string;
+  /** One line under the name in the picker. */
+  note: string;
+  /**
+   * Both halves, always. A preset selects the colour family; the `theme`
+   * setting still selects the polarity, so `light`, `dark` and `auto` keep
+   * meaning exactly what they meant before a preset was chosen.
+   */
+  light: ThemePalette;
+  dark: ThemePalette;
+}
+
+/**
+ * The built-in palettes.
+ *
+ * Two rules shaped every value here, and neither is taste:
+ *
+ *   Contrast is a correctness property. Body text, muted text, links and every
+ *   syntax token clear WCAG AA (4.5:1) against the surface they are actually
+ *   drawn on — the page for prose, `surface` for code blocks, the diff
+ *   backgrounds for additions and deletions. `high-contrast` clears AAA (7:1).
+ *   The ratios are computed, not judged: `test/theme-presets.test.ts` recomputes
+ *   all of them on every run, so a preset added later cannot ship failing.
+ *
+ *   That is also why the borrowed palettes are not verbatim. Solarized, Nord and
+ *   Gruvbox were all designed against a lower bar, and several of their accents
+ *   land near 3:1 on their own backgrounds. Hue and character are kept; the
+ *   lightness of a failing colour is moved until it passes. Where a family ships
+ *   only one polarity (Nord is a dark theme), the other half is built from the
+ *   same named palette rather than invented — Nord's own Snow Storm greys.
+ */
+export const THEME_PRESETS = [
+  {
+    id: 'default',
+    label: 'Default',
+    note: "The viewer's own palette.",
+    // Mirrors the tokens in entrypoints/viewer.css. Duplicated rather than
+    // parsed out of the sheet for the same reason EXPORT_CSS is: the test
+    // runner is bare node and cannot import a stylesheet. The duplication is
+    // load-bearing in one direction only — these values are what the contrast
+    // test actually checks, so the default palette is held to the same bar as
+    // every preset instead of being grandfathered in.
+    light: {
+      bg: '#ffffff',
+      surface: '#f6f8fa',
+      'surface-alt': '#fafbfc',
+      fg: '#1f2328',
+      'fg-muted': '#5a636d',
+      border: '#d5dbe1',
+      'border-strong': '#b6bfc9',
+      accent: '#0a53be',
+      'accent-hover': '#08409a',
+      visited: '#6639ba',
+      'on-accent': '#ffffff',
+      selection: '#cfe3ff',
+      scrollbar: '#c3ccd5',
+      'mark-bg': '#fff3c4',
+      'tk-keyword': '#b3202c',
+      'tk-string': '#0a3069',
+      'tk-comment': '#5f6874',
+      'tk-number': '#0550ae',
+      'tk-title': '#7a3fd0',
+      'tk-builtin': '#8a3400',
+      'tk-tag': '#0f5c28',
+      'tk-meta': '#57606a',
+      'tk-punct': '#4a545e',
+      'tk-addition': '#0f5c28',
+      'tk-addition-bg': '#e6ffec',
+      'tk-deletion': '#8a1420',
+      'tk-deletion-bg': '#ffebe9',
+    },
+    dark: {
+      bg: '#0d1117',
+      surface: '#161b22',
+      'surface-alt': '#12171f',
+      fg: '#e6edf3',
+      'fg-muted': '#9aa4af',
+      border: '#30363d',
+      'border-strong': '#4a525c',
+      accent: '#6cb1ff',
+      'accent-hover': '#8cc4ff',
+      visited: '#c4a0ff',
+      'on-accent': '#0d1117',
+      selection: '#2d4f7c',
+      scrollbar: '#454d57',
+      'mark-bg': '#4a3a12',
+      'tk-keyword': '#ff8a80',
+      'tk-string': '#a8d5ff',
+      'tk-comment': '#9aa4af',
+      'tk-number': '#84c5ff',
+      'tk-title': '#d7b3ff',
+      'tk-builtin': '#ffb070',
+      'tk-tag': '#8ceb96',
+      'tk-meta': '#a5b1bd',
+      'tk-punct': '#c2cbd4',
+      'tk-addition': '#8ceb96',
+      'tk-addition-bg': '#10251a',
+      'tk-deletion': '#ffaba4',
+      'tk-deletion-bg': '#2b1416',
+    },
+  },
+  {
+    id: 'solarized',
+    label: 'Solarized',
+    note: 'Warm paper and deep teal, after Ethan Schoonover.',
+    light: {
+      bg: '#fdf6e3',
+      surface: '#f4ecd6',
+      'surface-alt': '#f9f2e0',
+      fg: '#073642',
+      'fg-muted': '#4a5f66',
+      border: '#ded5bd',
+      'border-strong': '#bcb49e',
+      accent: '#1a5f8a',
+      'accent-hover': '#124765',
+      visited: '#5a4fa8',
+      'on-accent': '#fdf6e3',
+      selection: '#dee7cf',
+      scrollbar: '#c8c0aa',
+      'mark-bg': '#f2e2a8',
+      'tk-keyword': '#9c1f1c',
+      'tk-string': '#1a6b64',
+      'tk-comment': '#5a6e73',
+      'tk-number': '#1a5f8a',
+      'tk-title': '#5a4fa8',
+      'tk-builtin': '#8f3510',
+      'tk-tag': '#5b6600',
+      'tk-meta': '#5c6e74',
+      'tk-punct': '#44565c',
+      'tk-addition': '#4a5b00',
+      'tk-addition-bg': '#e8eccd',
+      'tk-deletion': '#9c1f1c',
+      'tk-deletion-bg': '#f7e0d8',
+    },
+    dark: {
+      bg: '#002b36',
+      surface: '#073642',
+      'surface-alt': '#04303b',
+      fg: '#e3ddc9',
+      'fg-muted': '#a3b0ae',
+      border: '#134653',
+      'border-strong': '#2c5f6c',
+      accent: '#5fb4e5',
+      'accent-hover': '#86c9ef',
+      visited: '#a9adea',
+      'on-accent': '#002b36',
+      selection: '#0f4a58',
+      scrollbar: '#2f5f6b',
+      'mark-bg': '#5a4a12',
+      'tk-keyword': '#f5726f',
+      'tk-string': '#4fc7bb',
+      'tk-comment': '#93a1a1',
+      'tk-number': '#5fb4e5',
+      'tk-title': '#a9adea',
+      'tk-builtin': '#f2803f',
+      'tk-tag': '#a4bd28',
+      'tk-meta': '#9aa9a8',
+      'tk-punct': '#b9c2bd',
+      'tk-addition': '#a4bd28',
+      'tk-addition-bg': '#123321',
+      'tk-deletion': '#f5726f',
+      'tk-deletion-bg': '#3a1a1c',
+    },
+  },
+  {
+    id: 'nord',
+    label: 'Nord',
+    note: 'Arctic blue-greys. The light half uses Nord’s own Snow Storm.',
+    light: {
+      bg: '#eceff4',
+      surface: '#e2e7ee',
+      'surface-alt': '#e8ecf2',
+      fg: '#2e3440',
+      'fg-muted': '#4c566a',
+      border: '#d2d9e3',
+      'border-strong': '#aeb8c8',
+      accent: '#2b6584',
+      'accent-hover': '#1f4d66',
+      visited: '#7a4b7d',
+      'on-accent': '#eceff4',
+      selection: '#d3dbe6',
+      scrollbar: '#b9c2d0',
+      'mark-bg': '#ecdcb0',
+      'tk-keyword': '#58668f',
+      'tk-string': '#4a6a3e',
+      'tk-comment': '#5b6478',
+      'tk-number': '#2b6584',
+      'tk-title': '#2f6b7c',
+      'tk-builtin': '#8a5320',
+      'tk-tag': '#4a6a3e',
+      'tk-meta': '#5b6478',
+      'tk-punct': '#414c5e',
+      'tk-addition': '#3f6a3a',
+      'tk-addition-bg': '#dfe9d8',
+      'tk-deletion': '#9d3a3a',
+      'tk-deletion-bg': '#f0dcdc',
+    },
+    dark: {
+      bg: '#2e3440',
+      surface: '#3b4252',
+      'surface-alt': '#343b49',
+      fg: '#eceff4',
+      'fg-muted': '#b5bfd0',
+      border: '#434c5e',
+      'border-strong': '#5a657c',
+      accent: '#88c0d0',
+      'accent-hover': '#a3d2df',
+      visited: '#c9a3cd',
+      'on-accent': '#2e3440',
+      selection: '#4c566a',
+      scrollbar: '#59637a',
+      'mark-bg': '#5c5230',
+      'tk-keyword': '#9fb0dd',
+      'tk-string': '#a3be8c',
+      'tk-comment': '#a4aec0',
+      'tk-number': '#c3a5bd',
+      'tk-title': '#88c0d0',
+      'tk-builtin': '#ebcb8b',
+      'tk-tag': '#8fbcbb',
+      'tk-meta': '#aab4c6',
+      'tk-punct': '#d8dee9',
+      'tk-addition': '#a3be8c',
+      'tk-addition-bg': '#333f34',
+      'tk-deletion': '#e08b86',
+      'tk-deletion-bg': '#453236',
+    },
+  },
+  {
+    id: 'gruvbox',
+    label: 'Gruvbox',
+    note: 'Retro, low-saturation, high warmth.',
+    light: {
+      bg: '#fbf1c7',
+      surface: '#f2e5bc',
+      'surface-alt': '#f7ebc4',
+      fg: '#3c3836',
+      'fg-muted': '#5c5147',
+      border: '#e4d5a8',
+      'border-strong': '#bdae87',
+      accent: '#076678',
+      'accent-hover': '#054b58',
+      visited: '#8f3f71',
+      'on-accent': '#fbf1c7',
+      selection: '#e6dcae',
+      scrollbar: '#c8b98f',
+      'mark-bg': '#efd88a',
+      'tk-keyword': '#9d0006',
+      'tk-string': '#5f6300',
+      'tk-comment': '#6b6054',
+      'tk-number': '#8f3f71',
+      'tk-title': '#076678',
+      'tk-builtin': '#8f4508',
+      'tk-tag': '#3d7151',
+      'tk-meta': '#6b6054',
+      'tk-punct': '#4a4340',
+      'tk-addition': '#4f6a2f',
+      'tk-addition-bg': '#e6e6b0',
+      'tk-deletion': '#9d0006',
+      'tk-deletion-bg': '#f3d9c0',
+    },
+    dark: {
+      bg: '#282828',
+      surface: '#32302f',
+      'surface-alt': '#2d2b2a',
+      fg: '#ebdbb2',
+      'fg-muted': '#bdae93',
+      border: '#3c3836',
+      'border-strong': '#5a524c',
+      accent: '#83a598',
+      'accent-hover': '#a3c0b4',
+      visited: '#d3869b',
+      'on-accent': '#282828',
+      selection: '#504945',
+      scrollbar: '#5a524c',
+      'mark-bg': '#5c4a12',
+      'tk-keyword': '#fc6857',
+      'tk-string': '#b8bb26',
+      'tk-comment': '#a89984',
+      'tk-number': '#d3869b',
+      'tk-title': '#8ec07c',
+      'tk-builtin': '#fabd2f',
+      'tk-tag': '#83a598',
+      'tk-meta': '#bdae93',
+      'tk-punct': '#d5c4a1',
+      'tk-addition': '#b8bb26',
+      'tk-addition-bg': '#2f3320',
+      'tk-deletion': '#fb5642',
+      'tk-deletion-bg': '#3a2320',
+    },
+  },
+  {
+    id: 'high-contrast',
+    label: 'High contrast',
+    note: 'Every colour clears WCAG AAA (7:1). No decorative tints.',
+    light: {
+      bg: '#ffffff',
+      surface: '#f2f2f2',
+      'surface-alt': '#f8f8f8',
+      fg: '#000000',
+      'fg-muted': '#3a3a3a',
+      border: '#767676',
+      'border-strong': '#3a3a3a',
+      accent: '#00459e',
+      'accent-hover': '#002d6b',
+      visited: '#6b1f8f',
+      'on-accent': '#ffffff',
+      selection: '#c7dcff',
+      scrollbar: '#767676',
+      'mark-bg': '#ffe97f',
+      'tk-keyword': '#9a0000',
+      'tk-string': '#00427a',
+      'tk-comment': '#3a3a3a',
+      'tk-number': '#00459e',
+      'tk-title': '#5c1a8a',
+      'tk-builtin': '#7a2a00',
+      'tk-tag': '#00521f',
+      'tk-meta': '#3a3a3a',
+      'tk-punct': '#2b2b2b',
+      'tk-addition': '#00521f',
+      'tk-addition-bg': '#dcf5e2',
+      'tk-deletion': '#8a0000',
+      'tk-deletion-bg': '#fde2e0',
+    },
+    dark: {
+      bg: '#000000',
+      surface: '#141414',
+      'surface-alt': '#0a0a0a',
+      fg: '#ffffff',
+      'fg-muted': '#cfcfcf',
+      border: '#8a8a8a',
+      'border-strong': '#cfcfcf',
+      accent: '#8ec2ff',
+      'accent-hover': '#b6d8ff',
+      visited: '#dfa8ff',
+      'on-accent': '#000000',
+      selection: '#3a4a66',
+      scrollbar: '#8a8a8a',
+      'mark-bg': '#4f4200',
+      'tk-keyword': '#ff9c93',
+      'tk-string': '#8fd8ff',
+      'tk-comment': '#c4c4c4',
+      'tk-number': '#8ec2ff',
+      'tk-title': '#e0aeff',
+      'tk-builtin': '#ffbe7a',
+      'tk-tag': '#7ee59a',
+      'tk-meta': '#c4c4c4',
+      'tk-punct': '#e0e0e0',
+      'tk-addition': '#7ee59a',
+      'tk-addition-bg': '#0d1f12',
+      'tk-deletion': '#ff9c93',
+      'tk-deletion-bg': '#24100f',
+    },
+  },
+] as const satisfies ReadonlyArray<ThemePreset>;
+
+export type ThemePresetId = (typeof THEME_PRESETS)[number]['id'];
+
+/* -------------------------------------------------------------------------- */
+/* Settings export/import                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Identifies a settings file as ours. Checked before anything else on import,
+ * so pointing the picker at an unrelated .json produces "that isn't a settings
+ * file" rather than a list of complaints about missing fields.
+ */
+export const SETTINGS_FILE_FORMAT = 'markdown-viewer-settings';
+
+/**
+ * Bumped only when an old file can no longer be read as-is. Import accepts any
+ * version at or below this, and accepts higher ones too — see `settings-io.ts`,
+ * which reads what it recognises and reports the rest rather than refusing a
+ * file written by a build the user upgraded from.
+ */
+export const SETTINGS_FILE_VERSION = 1;
+
+/** Suggested name for the downloaded file, before the date is appended. */
+export const SETTINGS_FILE_BASENAME = 'markdown-viewer-settings';
 
 /* -------------------------------------------------------------------------- */
 /* Markdown pipeline                                                           */

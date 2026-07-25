@@ -1,0 +1,131 @@
+/* Markdown Viewer — collapsible heading sections.
+
+   Two rules do the actual work: one hides a folded run of blocks, one collapses
+   a folded *heading* in place instead. Everything else is the control.
+
+   Colours are --mdv-* tokens from viewer.css, so both themes are covered by the
+   `data-mdv-theme` attribute on <html> without a single media query. Selectors
+   are a class heavier than they need to be, because this file and viewer.css
+   reach the page by different routes and their order is not guaranteed. */
+
+/* ==========================================================================
+   1. Hiding
+
+   Screen only. A folded section is a reading state, not an edit: printing a
+   document with three sections silently missing is a trap, so paper gets the
+   whole thing and the `@media print` block at the end only removes the control.
+   ========================================================================== */
+
+@media screen {
+  /* `!important` because it has to beat the display values viewer.css sets on
+     specific blocks — `.mdv-body table { display: block }` most of all, which a
+     plain `display: none` would lose to. `display: none` is also what takes the
+     content out of the accessibility tree and out of the tab order, so folded
+     really is folded and not merely invisible. */
+  .mdv-body > [data-mdv-folded] {
+    display: none !important;
+  }
+
+  /* Headings are the exception, and the reason is measurement rather than
+     looks. Both the table-of-contents scroll-spy and scroll memory measure
+     every heading in the document; a `display: none` heading reports a box of
+     zeros, which the spy reads as "already scrolled past" and the sidebar then
+     lights up a section the reader is nowhere near. Collapsed in place they
+     measure at the fold — which is exactly where they now are — while
+     `visibility: hidden` still takes them, and the control inside them, out of
+     the accessibility tree and out of the tab order. */
+  .mdv-body > :is(h1, h2, h3, h4, h5, h6)[data-mdv-folded] {
+    display: block !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
+  }
+}
+
+/* ==========================================================================
+   2. The control
+
+   Inline, at the head of the heading, rather than parked in the left gutter:
+   the gutter already belongs to the anchor link from document.css, and on a
+   narrow window there is not room for two — a control that is clipped off the
+   edge of the page is not a control.
+
+   Its box is reserved whether or not it is visible, so approaching a heading
+   never moves the text.
+   ========================================================================== */
+
+.mdv-body .mdv-fold {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 0.9em;
+  /* One line box of the heading it belongs to, so the chevron stays optically
+     centred on the first line whether that line is an h1 or an h6. */
+  height: 1lh;
+  vertical-align: top;
+  margin: 0 0.25em 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--mdv-fg-muted);
+  cursor: pointer;
+  /* Present but recessive: discoverable on approach, and not a row of arrows
+     down the left of every document. */
+  opacity: 0.3;
+  transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease;
+}
+
+.mdv-body .mdv-fold-icon {
+  display: block;
+  transition: transform var(--mdv-dur) ease;
+}
+
+/* A folded section has to advertise itself: it is the one state where the
+   control is the only evidence that anything is missing. */
+.mdv-body :is(h1, h2, h3, h4, h5, h6):hover > .mdv-fold,
+.mdv-body .mdv-fold:focus,
+.mdv-body [data-mdv-fold='closed'] > .mdv-fold {
+  opacity: 1;
+}
+
+.mdv-body .mdv-fold:hover {
+  color: var(--mdv-accent);
+}
+
+.mdv-body [data-mdv-fold='closed'] > .mdv-fold .mdv-fold-icon {
+  transform: rotate(-90deg);
+}
+
+/* Nothing to hover on a touch screen, so the affordance has to be standing. */
+@media (hover: none) {
+  .mdv-body .mdv-fold {
+    opacity: 0.55;
+  }
+}
+
+/* ==========================================================================
+   3. Motion and print
+   ========================================================================== */
+
+/* viewer.css already clamps every transition under this preference; stated
+   again here so the rule holds even when this stylesheet is the only one that
+   loaded. */
+@media (prefers-reduced-motion: reduce) {
+  .mdv-body .mdv-fold,
+  .mdv-body .mdv-fold-icon {
+    transition: none;
+  }
+}
+
+/* The control is chrome and never prints. The content it was hiding does — see
+   the `@media screen` above. */
+@media print {
+  .mdv-body .mdv-fold {
+    display: none !important;
+  }
+}

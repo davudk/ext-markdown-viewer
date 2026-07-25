@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 
 import type { Heading } from '@/lib/markdown';
 
@@ -18,7 +10,7 @@ import './toc.css';
  * enough down that a heading only takes over after you have actually arrived at
  * it, not the instant its first pixel appears.
  *
- * Local rather than in `lib/config.ts`: it is a property of this sidebar's feel,
+ * Local rather than in `lib/config.ts`: it is a property of this outline's feel,
  * not a value any other module has an opinion about.
  */
 const ACTIVE_LINE_PX = 96;
@@ -32,10 +24,7 @@ const JUMP_OFFSET_PX = 24;
  */
 const END_ZONE_RATIO = 0.25;
 
-/** Viewport width below which the sidebar starts collapsed rather than eating the measure. */
-const AUTO_COLLAPSE_PX = 900;
-
-/** How long after the reader touches the sidebar we stop moving it for them. */
+/** How long after the reader touches the outline we stop moving it for them. */
 const QUIET_MS = 1200;
 
 interface TocNode {
@@ -44,36 +33,48 @@ interface TocNode {
 }
 
 /**
- * The table-of-contents sidebar: outline, scroll-spy, and jump-to-heading.
+ * The outline panel: the document's headings, scroll-spy, and jump-to-heading.
+ *
+ * A panel rather than a sidebar — `Sidebar.tsx` owns the `<nav>`, the collapse
+ * toggle and the tab strip, and this renders inside one tab of it. Everything
+ * that is about *headings* stayed here; everything that was about *the sidebar*
+ * moved out. The one thing that crossed the line is `visible`: the follow-the-
+ * active-entry scroll below has to know whether anyone can see it, which used
+ * to be the local `expanded` state and is now a prop. It defaults to true, so
+ * an outline rendered anywhere other than behind a tab needs no ceremony.
  *
  * Headings arrive flat and already slugged (see `lib/markdown.ts`) — the ids
  * here are the same ones on the `<h1>`–`<h4>` in the document body, which is
  * what lets every link be a real `#fragment` that survives copy, middle-click
  * and bookmarking.
  */
-export function Toc({ headings }: { headings: Heading[] }) {
-  const [expanded, setExpanded] = useState(startsExpanded);
+export function Toc({
+  headings,
+  visible = true,
+}: {
+  headings: Heading[];
+  visible?: boolean;
+}) {
   const activeId = useActiveHeading(headings);
-  const panelId = useId();
 
   const tree = useMemo(() => buildTree(headings), [headings]);
 
   const scrollerRef = useRef<HTMLDivElement>(null);
   const linksRef = useRef(new Map<string, HTMLAnchorElement>());
-  // Timestamp until which the sidebar is the reader's to scroll, not ours.
+  // Timestamp until which the outline is the reader's to scroll, not ours.
   const quietUntilRef = useRef(0);
 
   const hush = useCallback(() => {
     quietUntilRef.current = Date.now() + QUIET_MS;
   }, []);
 
-  // Follow the active entry, but never while the reader is working the sidebar
+  // Follow the active entry, but never while the reader is working the list
   // themselves — nothing feels worse than a list that scrolls out from under
   // the pointer mid-drag.
   useEffect(() => {
     const scroller = scrollerRef.current;
     const link = activeId ? linksRef.current.get(activeId) : undefined;
-    if (!scroller || !link || !expanded) return;
+    if (!scroller || !link || !visible) return;
     if (Date.now() < quietUntilRef.current) return;
 
     const pad = 32;
@@ -93,7 +94,7 @@ export function Toc({ headings }: { headings: Heading[] }) {
       top: Math.max(0, next),
       behavior: reducedMotion() ? 'auto' : 'smooth',
     });
-  }, [activeId, expanded]);
+  }, [activeId, visible]);
 
   const navigate = useCallback((event: MouseEvent<HTMLAnchorElement>, id: string) => {
     // Modified clicks belong to the browser: new tab, new window, download.
@@ -122,46 +123,28 @@ export function Toc({ headings }: { headings: Heading[] }) {
     history.pushState(null, '', `#${id}`);
   }, [hush]);
 
-  if (headings.length === 0) return null;
+  // Blank where the panel used to simply not exist. A tab that opens onto
+  // nothing looks broken in a way an empty document never did.
+  if (headings.length === 0) {
+    return <p className="mdv-side-empty">This document has no headings.</p>;
+  }
 
   return (
-    <nav
-      className={expanded ? 'mdv-toc' : 'mdv-toc mdv-toc-is-collapsed'}
-      aria-label="Table of contents"
+    <div
+      className="mdv-side-scroll"
+      ref={scrollerRef}
+      onWheel={hush}
+      onPointerDown={hush}
+      onTouchMove={hush}
+      onKeyDown={hush}
     >
-      <div className="mdv-toc-head">
-        <button
-          type="button"
-          className="mdv-toc-toggle"
-          aria-expanded={expanded}
-          aria-controls={panelId}
-          aria-label={expanded ? 'Hide table of contents' : 'Show table of contents'}
-          title={expanded ? 'Hide table of contents' : 'Show table of contents'}
-          onClick={() => setExpanded((open) => !open)}
-        >
-          {expanded ? <ChevronIcon /> : <ListIcon />}
-        </button>
-        <span className="mdv-toc-heading">Contents</span>
-      </div>
-
-      <div
-        id={panelId}
-        className="mdv-toc-scroll"
-        ref={scrollerRef}
-        hidden={!expanded}
-        onWheel={hush}
-        onPointerDown={hush}
-        onTouchMove={hush}
-        onKeyDown={hush}
-      >
-        <TocList
-          nodes={tree}
-          activeId={activeId}
-          links={linksRef.current}
-          onNavigate={navigate}
-        />
-      </div>
-    </nav>
+      <TocList
+        nodes={tree}
+        activeId={activeId}
+        links={linksRef.current}
+        onNavigate={navigate}
+      />
+    </div>
   );
 }
 
@@ -268,6 +251,10 @@ function buildTree(headings: Heading[]): TocNode[] {
  * Above the first heading nothing has passed the line; the first entry is
  * highlighted anyway, since the reader is in its section by any reading that
  * matters and a sidebar with nothing lit looks broken.
+ *
+ * Runs whether or not the outline tab is showing. The observers are idle unless
+ * the page moves, and keeping them attached means switching back to the outline
+ * shows where the reader is now rather than where they were when they left.
  */
 function useActiveHeading(headings: Heading[]): string | null {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -343,38 +330,4 @@ function atEnd(): boolean {
 
 function reducedMotion(): boolean {
   return matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-/** Narrow windows open collapsed; the reader can still pull the sidebar out. */
-function startsExpanded(): boolean {
-  return !matchMedia(`(max-width: ${AUTO_COLLAPSE_PX}px)`).matches;
-}
-
-function ChevronIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
-      <path
-        d="M10 3.25 5.25 8 10 12.75"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ListIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
-      <path
-        d="M2.5 4h11M2.5 8h11M2.5 12h7"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
 }

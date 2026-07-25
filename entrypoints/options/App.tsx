@@ -1,18 +1,47 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ChangeEvent,
+} from 'react';
 
 // Straight from config rather than through settings.ts, which re-exports only
 // the theme surface. These are static tables, not behaviour — see config.ts.
 import {
+  CUSTOM_CSS_MAX_LENGTH,
   DOCUMENT_STATE_LIMIT,
+  DOCUMENT_THEME_LIMIT,
   CONTENT_WIDTH_CH,
   CONTENT_WIDTH_OPTIONS,
   FONT_FAMILY_OPTIONS,
   FONT_SIZE_RANGE,
   FONT_STACKS,
   LINE_HEIGHT_RANGE,
+  THEME_TOKENS,
   VIEWER_CSS_VARS,
 } from '@/lib/config';
 import { sendMessage, type SyncResult } from '@/lib/messages';
+import {
+  exportSettings,
+  importSettings,
+  type ImportResult,
+} from '@/lib/settings-io';
+import {
+  clearAllDocumentThemes,
+  clearDocumentTheme,
+  getPreset,
+  listDocumentThemes,
+  PRESET_OPTIONS,
+  resolvePolarity,
+  sanitizeCustomCss,
+  type DocumentTheme,
+  type DocumentThemeEntry,
+  type ThemePalette,
+  type ThemePresetId,
+} from '@/lib/theme-presets';
 import {
   disableAutoRender,
   hasFileAccess,
@@ -57,7 +86,16 @@ type State =
   | { kind: 'ready'; access: Access };
 
 /** Which section a message belongs under, so it lands next to its control. */
-type Section = 'rendering' | 'files' | 'sites' | 'reading' | 'behaviour';
+type Section =
+  | 'rendering'
+  | 'files'
+  | 'sites'
+  | 'appearance'
+  | 'reading'
+  | 'behaviour'
+  | 'css'
+  | 'pins'
+  | 'backup';
 
 /**
  * The typography settings this section owns. Named as a subset so the reset
@@ -97,6 +135,40 @@ function pickBehaviour(settings: Settings): Behaviour {
 }
 
 const BEHAVIOUR_DEFAULTS: Behaviour = pickBehaviour(DEFAULT_SETTINGS);
+
+/**
+ * Every token of a palette as inline custom properties, so the preview below is
+ * drawn by the same variables a real document is — not by a hand-built
+ * approximation that could agree with the palette one week and not the next.
+ */
+function paletteVars(palette: ThemePalette): CSSProperties {
+  const vars: Record<string, string> = {};
+  for (const token of THEME_TOKENS) vars[`--mdv-${token}`] = palette[token];
+  return vars as CSSProperties;
+}
+
+/** `example.com/docs/notes.md`, or the whole thing if it will not parse. */
+function documentLabel(key: string): string {
+  try {
+    const url = new URL(key);
+    return decodeURIComponent(`${url.host}${url.pathname}${url.search}`) || key;
+  } catch {
+    return key;
+  }
+}
+
+/** "Dark · Gruvbox", or just whichever half was pinned. */
+function describePin(override: DocumentTheme): string {
+  const parts: string[] = [];
+  if (override.theme) {
+    parts.push(
+      THEME_OPTIONS.find((option) => option.value === override.theme)?.label ??
+        override.theme,
+    );
+  }
+  if (override.preset) parts.push(getPreset(override.preset).label);
+  return parts.join(' · ');
+}
 
 /**
  * How long a slider may keep moving before its value is written.
@@ -143,6 +215,10 @@ type Busy =
   | { kind: 'auto' }
   | { kind: 'file' }
   | { kind: 'site'; origin: string }
+  | { kind: 'pin'; key: string }
+  | { kind: 'pins' }
+  | { kind: 'export' }
+  | { kind: 'import' }
   | null;
 
 function describeError(error: unknown): string {
@@ -383,16 +459,29 @@ function App() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [copied, setCopied] = useState(false);
   const [theme, setTheme] = useState<Theme>(DEFAULT_SETTINGS.theme);
+  const [preset, setPreset] = useState<ThemePresetId>(DEFAULT_SETTINGS.themePreset);
+  const [customCss, setCustomCss] = useState(DEFAULT_SETTINGS.customCss);
   const [reading, setReading] = useState<Reading>(READING_DEFAULTS);
   const [behaviour, setBehaviour] = useState<Behaviour>(BEHAVIOUR_DEFAULTS);
+  const [pins, setPins] = useState<DocumentThemeEntry[] | null>(null);
+  const [imported, setImported] = useState<ImportResult | null>(null);
   const [app] = useState(readManifest);
+
+  /**
+   * Which half of a preset the preview shows. `auto` has no colour of its own,
+   * so the only honest preview is the one the reader would actually get, which
+   * means asking the OS the same question the viewer asks it.
+   */
+  const [prefersDark, setPrefersDark] = useState(false);
+
+  const fileInput = useRef<HTMLInputElement>(null);
 
   /**
    * A write that has been decided but not yet made, and the timer that will
    * make it. Held in refs, not state: nothing on screen depends on them, and
    * re-rendering mid-drag for a bookkeeping change would be pure waste.
    */
-  const queued = useRef<Partial<Reading> | null>(null);
+  const queued = useRef<Partial<Settings> | null>(null);
   const writeTimer = useRef<number | null>(null);
 
   /** Last file-access value we acted on, so a flip to on syncs exactly once. */
@@ -417,7 +506,7 @@ function App() {
   }, []);
 
   /** Write whatever is queued right now, cancelling any pending timer. */
-  const flushReading = useCallback(() => {
+  const flushWrite = useCallback(() => {
     if (writeTimer.current !== null) {
       window.clearTimeout(writeTimer.current);
       writeTimer.current = null;
@@ -444,13 +533,29 @@ function App() {
       queued.current = { ...queued.current, ...patch };
 
       if (!defer) {
-        flushReading();
+        flushWrite();
         return;
       }
       if (writeTimer.current !== null) window.clearTimeout(writeTimer.current);
-      writeTimer.current = window.setTimeout(flushReading, WRITE_DELAY_MS);
+      writeTimer.current = window.setTimeout(flushWrite, WRITE_DELAY_MS);
     },
-    [flushReading],
+    [flushWrite],
+  );
+
+  /**
+   * The stylesheet, on the same deferred write as the sliders and for the same
+   * reason: a keystroke is not a decision, and writing on every one of them
+   * would republish the sheet to every open document mid-word.
+   */
+  const applyCustomCss = useCallback(
+    (next: string) => {
+      setCustomCss(next);
+      queued.current = { ...queued.current, customCss: next };
+
+      if (writeTimer.current !== null) window.clearTimeout(writeTimer.current);
+      writeTimer.current = window.setTimeout(flushWrite, WRITE_DELAY_MS);
+    },
+    [flushWrite],
   );
 
   /** Switches write immediately: a flip is one deliberate act, not a drag. */
@@ -473,13 +578,13 @@ function App() {
   // usually closed the instant the last slider is released. `pagehide` is the
   // one event that still fires when the tab is closed or put in the bfcache.
   useEffect(() => {
-    const onHide = () => flushReading();
+    const onHide = () => flushWrite();
     window.addEventListener('pagehide', onHide);
     return () => {
       window.removeEventListener('pagehide', onHide);
-      flushReading();
+      flushWrite();
     };
-  }, [flushReading]);
+  }, [flushWrite]);
 
   /**
    * Re-read every permission from the browser. Called on load, after each
@@ -543,6 +648,8 @@ function App() {
     void refresh().catch(() => setState({ kind: 'unavailable' }));
     void loadSettings().then((settings) => {
       setTheme(settings.theme);
+      setPreset(settings.themePreset);
+      setCustomCss(settings.customCss);
       setReading(pickReading(settings));
       setBehaviour(pickBehaviour(settings));
     });
@@ -553,13 +660,28 @@ function App() {
     () =>
       onSettingsChanged((next) => {
         setTheme(next.theme);
+        setPreset(next.themePreset);
         // Our own debounced writes come back through this listener too. While
         // one is still queued, storage is a step behind what is on screen, and
-        // adopting it would snap a slider back under the user's cursor.
-        if (queued.current === null) setReading(pickReading(next));
+        // adopting it would snap a slider back under the user's cursor — or, in
+        // the editor below, move the caret out from under them mid-word.
+        if (queued.current === null) {
+          setReading(pickReading(next));
+          setCustomCss(next.customCss);
+        }
       }),
     [],
   );
+
+  // `auto` has no colour of its own, so the preview has to ask the OS the same
+  // question the viewer asks it, and keep asking.
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-color-scheme: dark)');
+    const update = () => setPrefersDark(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
 
   // Match the page to the documents it renders. `auto` defers to the OS via
   // prefers-color-scheme; an explicit choice overrides it in both directions.
@@ -603,6 +725,113 @@ function App() {
     // Open documents and the popup restyle themselves off the storage change;
     // a failed write shouldn't take the rest of the page down with it.
     void saveSettings({ theme: next }).catch(() => undefined);
+  };
+
+  const choosePreset = (next: ThemePresetId) => {
+    setPreset(next);
+    void saveSettings({ themePreset: next }).catch(() => undefined);
+  };
+
+  /** Re-read the pinned documents. Cheap, and always from storage. */
+  const refreshPins = useCallback(async () => {
+    try {
+      setPins(await listDocumentThemes());
+    } catch {
+      setPins([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPins();
+  }, [refreshPins]);
+
+  const unpin = (key: string) => {
+    clear();
+    setBusy({ kind: 'pin', key });
+
+    clearDocumentTheme(key)
+      .then(async () => {
+        await refreshPins();
+        say('pins', 'ok', `${documentLabel(key)} follows your global theme again.`);
+      })
+      .catch((error) => say('pins', 'error', describeError(error)))
+      .finally(() => setBusy(null));
+  };
+
+  const unpinAll = () => {
+    clear();
+    setBusy({ kind: 'pins' });
+
+    clearAllDocumentThemes()
+      .then(async () => {
+        await refreshPins();
+        say('pins', 'ok', 'Every document follows your global theme again.');
+      })
+      .catch((error) => say('pins', 'error', describeError(error)))
+      .finally(() => setBusy(null));
+  };
+
+  const handleExport = () => {
+    clear();
+    setImported(null);
+    setBusy({ kind: 'export' });
+
+    // Read from storage rather than from the state above: this page shows some
+    // settings and not others, and a backup that only covered the ones on
+    // screen would be a backup in name.
+    loadSettings()
+      .then((settings) => exportSettings(settings))
+      .then(({ filename }) =>
+        say('backup', 'ok', `Saved ${filename}. It contains settings only — no documents, and nothing about what you have read.`),
+      )
+      .catch((error) => say('backup', 'error', describeError(error)))
+      .finally(() => setBusy(null));
+  };
+
+  /**
+   * Reading the file is the only asynchronous part; validation and the write
+   * are one step, so there is no window in which half a file has been applied.
+   */
+  const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // Cleared immediately, so choosing the same file twice fires again — which
+    // is exactly what someone does after fixing a file the import complained
+    // about.
+    event.target.value = '';
+    if (!file) return;
+
+    clear();
+    setImported(null);
+    setBusy({ kind: 'import' });
+
+    try {
+      const result = await importSettings(await file.text());
+      setImported(result);
+
+      if (!result.ok) {
+        say('backup', 'error', result.error);
+        return;
+      }
+
+      const settings = await loadSettings();
+      setTheme(settings.theme);
+      setPreset(settings.themePreset);
+      setCustomCss(settings.customCss);
+      setReading(pickReading(settings));
+      setBehaviour(pickBehaviour(settings));
+
+      say(
+        'backup',
+        result.notes.length > 0 ? 'info' : 'ok',
+        result.notes.length > 0
+          ? `Imported ${file.name}, with the changes listed below.`
+          : `Imported ${file.name}. Every setting in it was applied.`,
+      );
+    } catch (error) {
+      say('backup', 'error', describeError(error));
+    } finally {
+      setBusy(null);
+    }
   };
 
   /**
@@ -703,6 +932,26 @@ function App() {
   const noticeFor = (where: Section) => (section === where ? notice : null);
   const ready = state.kind === 'ready' ? state.access : null;
   const locked = busy !== null;
+
+  /** The half of the preset the reader would actually be shown right now. */
+  const polarity = resolvePolarity(theme, prefersDark);
+  const palette = getPreset(preset)[polarity];
+
+  /**
+   * What would happen to the stylesheet if it were applied as typed. Recomputed
+   * on every keystroke rather than on save, because the whole point is to say
+   * what was dropped while there is still something to do about it.
+   */
+  const cssReport = useMemo(() => sanitizeCustomCss(customCss), [customCss]);
+  const removedUrls = cssReport.removals.filter(
+    (removal) => removal.kind === 'remote-url',
+  ).length;
+  const removedImports = cssReport.removals.filter(
+    (removal) => removal.kind === 'import',
+  ).length;
+  const removedMarkup = cssReport.removals.filter(
+    (removal) => removal.kind === 'markup',
+  ).length;
 
   return (
     <div className="page">
@@ -957,6 +1206,320 @@ function App() {
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="row row-stack">
+            <div className="row-text">
+              <h3 className="row-title" id="preset-label">
+                Colour preset
+              </h3>
+              <div className="row-desc" id="preset-desc">
+                <p>
+                  Which palette rendered documents are drawn from. This is a
+                  separate choice from <strong>Theme</strong> above and does not
+                  override it: every preset comes in a light and a dark half, and
+                  the setting above still decides which half you get — including{' '}
+                  <strong>Auto</strong>, which keeps following your system.
+                </p>
+                <p>
+                  Every preset meets the WCAG AA contrast minimum for body text,
+                  muted text, links and syntax highlighting, measured against the
+                  surface each one is actually painted on.{' '}
+                  <strong>High contrast</strong> meets the stricter AAA level
+                  throughout.
+                </p>
+              </div>
+            </div>
+
+            <div
+              className="presets"
+              role="radiogroup"
+              aria-labelledby="preset-label"
+              aria-describedby="preset-desc"
+            >
+              {PRESET_OPTIONS.map(({ value, label, note, swatch }) => (
+                <label
+                  key={value}
+                  className={value === preset ? 'preset is-on' : 'preset'}
+                >
+                  <input
+                    type="radio"
+                    name="theme-preset"
+                    value={value}
+                    checked={value === preset}
+                    onChange={() => choosePreset(value)}
+                  />
+                  <span className="preset-body">
+                    {/* The half that is actually in use, so the chips are the
+                        colours this reader would get rather than an average of
+                        two palettes they will only ever see one of. */}
+                    <span className="preset-swatch" aria-hidden="true">
+                      {swatch[polarity].map((colour, index) => (
+                        <span key={index} style={{ background: colour }} />
+                      ))}
+                    </span>
+                    <span className="preset-text">
+                      <span className="preset-name">{label}</span>
+                      <span className="preset-note">{note}</span>
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="row row-stack">
+            <h3 className="row-title" id="palette-label">
+              Preview
+            </h3>
+            {/* Drawn from the preset's own custom properties, the same ones the
+                viewer's stylesheet reads — so this is the palette itself, not a
+                drawing of it that could drift. */}
+            <div
+              className="palette"
+              style={paletteVars(palette)}
+              role="group"
+              aria-labelledby="palette-label"
+            >
+              <p className="palette-title">Notes on the estuary</p>
+              <p className="palette-body">
+                The tide runs out twice a day and leaves the whole channel bare.{' '}
+                <a href="#preset-label">A link</a>, some{' '}
+                <code className="palette-code">inline code</code>, and a line of{' '}
+                <span className="palette-muted">quieter text beneath it</span>.
+              </p>
+              <pre className="palette-pre">
+                <span className="tk-comment">// syntax colours are part of the preset</span>
+                {'\n'}
+                <span className="tk-keyword">export function</span>{' '}
+                <span className="tk-title">tide</span>(
+                <span className="tk-punct">hours</span>){' '}
+                {'{'}
+                {'\n  '}
+                <span className="tk-keyword">return</span>{' '}
+                <span className="tk-string">'ebb'</span>,{' '}
+                <span className="tk-number">2</span>;{'\n'}
+                {'}'}
+              </pre>
+            </div>
+          </div>
+        </section>
+
+        {/* Your stylesheet ---------------------------------------------- */}
+        <section className="card" aria-labelledby="css-h">
+          <div className="card-head">
+            <h2 id="css-h">Your stylesheet</h2>
+          </div>
+
+          <div className="row row-stack">
+            <label className="row-title" htmlFor="custom-css">
+              CSS applied to rendered documents
+            </label>
+            <div className="row-desc" id="custom-css-desc">
+              <p>
+                Applied on top of the theme, to the document itself and nothing
+                else. Selectors are relative to the document body, so{' '}
+                <code>h1</code> means a heading in the file — the viewer's own
+                sidebar and toolbar, the popup and this page are all out of
+                reach, by construction rather than by convention.
+              </p>
+              <p>
+                Two things are removed before it is applied, and you are told
+                when they are: <code>@import</code>, and any <code>url()</code>{' '}
+                that is not a <code>data:</code> one. Both would make the viewer
+                request something over the network, and it never requests
+                anything.
+              </p>
+            </div>
+
+            <textarea
+              id="custom-css"
+              className="editor"
+              value={customCss}
+              spellCheck={false}
+              rows={8}
+              maxLength={CUSTOM_CSS_MAX_LENGTH}
+              aria-describedby="custom-css-desc custom-css-report"
+              placeholder={'blockquote {\n  font-style: italic;\n}'}
+              onChange={(event) => applyCustomCss(event.target.value)}
+            />
+
+            <p className="editor-count">
+              {customCss.length.toLocaleString()} of{' '}
+              {CUSTOM_CSS_MAX_LENGTH.toLocaleString()} characters
+            </p>
+
+            {/* Always in the DOM so a change is announced, and phrased as what
+                happened rather than as a warning — the reader wrote this. */}
+            <p
+              id="custom-css-report"
+              className={
+                cssReport.error
+                  ? 'msg is-err'
+                  : cssReport.removals.length > 0 || cssReport.truncated
+                    ? 'msg is-info'
+                    : 'msg'
+              }
+              role="status"
+              aria-live="polite"
+            >
+              {cssReport.error ??
+                [
+                  removedImports > 0 &&
+                    `${removedImports} @import ${removedImports === 1 ? 'rule was' : 'rules were'} removed.`,
+                  removedUrls > 0 &&
+                    `${removedUrls} url() ${removedUrls === 1 ? 'reference was' : 'references were'} removed for pointing somewhere other than a data: URI.`,
+                  removedMarkup > 0 && 'A `</` sequence was removed.',
+                  cssReport.truncated && 'The text was cut at the size limit.',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+            </p>
+
+            <div className="actions">
+              <button
+                type="button"
+                className="btn btn-quiet"
+                disabled={customCss === ''}
+                onClick={() => {
+                  applyCustomCss('');
+                  say('css', 'ok', 'Your stylesheet is empty again.');
+                }}
+              >
+                Remove my stylesheet
+              </button>
+            </div>
+
+            <Message notice={noticeFor('css')} />
+          </div>
+        </section>
+
+        {/* Pinned documents --------------------------------------------- */}
+        <section className="card" aria-labelledby="pins-h">
+          <div className="card-head">
+            <h2 id="pins-h">Pinned documents</h2>
+          </div>
+
+          <div className="row row-stack">
+            <p className="row-desc">
+              Documents you have given a theme of their own from the viewer.
+              Each one ignores the settings above until it is unpinned. The last{' '}
+              {DOCUMENT_THEME_LIMIT} are kept; beyond that the least recently
+              opened is forgotten.
+            </p>
+
+            {pins === null && <Skeleton label="Loading pinned documents" />}
+
+            {pins?.length === 0 && (
+              <p className="empty">
+                Nothing is pinned. Every document follows the theme and preset
+                above.
+              </p>
+            )}
+
+            {pins && pins.length > 0 && (
+              <ul className="sites">
+                {pins.map((entry) => {
+                  const label = documentLabel(entry.key);
+                  const removing = busy?.kind === 'pin' && busy.key === entry.key;
+                  return (
+                    <li key={entry.key} className="site">
+                      <span className="site-name" title={entry.key}>
+                        {label}
+                      </span>
+                      <span className="pin-what">{describePin(entry.override)}</span>
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-inline"
+                        aria-label={`Unpin ${label}`}
+                        disabled={locked}
+                        onClick={() => unpin(entry.key)}
+                      >
+                        {removing ? 'Unpinning…' : 'Unpin'}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {pins && pins.length > 0 && (
+              <div className="actions">
+                <button
+                  type="button"
+                  className="btn btn-quiet"
+                  disabled={locked}
+                  onClick={unpinAll}
+                >
+                  {busy?.kind === 'pins' ? 'Unpinning…' : 'Unpin all'}
+                </button>
+              </div>
+            )}
+
+            <Message notice={noticeFor('pins')} />
+          </div>
+        </section>
+
+        {/* Backup ------------------------------------------------------- */}
+        <section className="card" aria-labelledby="backup-h">
+          <div className="card-head">
+            <h2 id="backup-h">Backup</h2>
+          </div>
+
+          <div className="row row-stack">
+            <h3 className="row-title">Save your settings to a file</h3>
+            <p className="row-desc">
+              A single JSON file holding every setting on this page, written
+              straight to your downloads folder. It goes nowhere else — there is
+              no account and no sync. Site permissions, scroll positions and
+              pinned documents are not in it; the first is Chrome's to grant and
+              the other two describe this computer rather than your preferences.
+            </p>
+
+            <div className="actions">
+              <button
+                type="button"
+                className="btn btn-quiet"
+                disabled={locked}
+                onClick={handleExport}
+              >
+                {busy?.kind === 'export' ? 'Saving…' : 'Export settings'}
+              </button>
+            </div>
+          </div>
+
+          <div className="row row-stack">
+            <label className="row-title" htmlFor="settings-file">
+              Load settings from a file
+            </label>
+            <p className="row-desc" id="settings-file-desc">
+              Every field is checked against what this version understands before
+              anything is written: values out of range are brought back into it,
+              values of the wrong kind are left alone, and anything that is not a
+              setting is ignored. A file this version cannot read changes nothing
+              at all, and says why.
+            </p>
+
+            <input
+              id="settings-file"
+              ref={fileInput}
+              className="file"
+              type="file"
+              accept="application/json,.json"
+              aria-describedby="settings-file-desc"
+              disabled={locked}
+              onChange={(event) => void handleImport(event)}
+            />
+
+            <Message notice={noticeFor('backup')} />
+
+            {imported?.ok && imported.notes.length > 0 && (
+              <ul className="notes">
+                {imported.notes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            )}
           </div>
         </section>
 

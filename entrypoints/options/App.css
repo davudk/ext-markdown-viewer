@@ -621,6 +621,276 @@ code {
   letter-spacing: -0.015em;
 }
 
+/* Preset picker ------------------------------------------------------------ */
+
+.presets {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.preset {
+  position: relative;
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+
+.preset:hover {
+  border-color: var(--line-strong);
+  background: var(--surface);
+}
+
+.preset.is-on {
+  border-color: var(--accent);
+  /* A second ring rather than a thicker border: a border that changes width
+     would shift every card in the grid by a pixel as the choice moves. */
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.preset input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.preset input:focus-visible ~ .preset-body {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+  border-radius: 8px;
+}
+
+.preset-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+/* Three chips — page, text, link — from the half of the preset in use. */
+.preset-swatch {
+  display: flex;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.preset-swatch span {
+  width: 12px;
+  height: 26px;
+}
+
+.preset-text {
+  display: block;
+  min-width: 0;
+}
+
+.preset-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.preset.is-on .preset-name::after {
+  content: ' ✓';
+  color: var(--accent);
+}
+
+.preset-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* Palette preview ---------------------------------------------------------- */
+
+/* Every colour below comes from an --mdv-* custom property set inline from the
+   preset, so this box is the palette rendering rather than a copy of it. */
+.palette {
+  margin-top: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--mdv-bg);
+  color: var(--mdv-fg);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow: hidden;
+}
+
+.palette p {
+  margin: 0 0 0.7em;
+}
+
+.palette-title {
+  font-size: 1.25em;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--mdv-fg);
+}
+
+.palette a {
+  color: var(--mdv-accent);
+  text-underline-offset: 0.16em;
+}
+
+.palette-muted {
+  color: var(--mdv-fg-muted);
+}
+
+.palette-code {
+  padding: 0.15em 0.4em;
+  border: 1px solid var(--mdv-border);
+  border-radius: 4px;
+  background: var(--mdv-surface);
+  color: var(--mdv-fg);
+}
+
+.palette-pre {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--mdv-border);
+  border-radius: 8px;
+  background: var(--mdv-surface);
+  color: var(--mdv-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+.palette .tk-comment {
+  color: var(--mdv-tk-comment);
+  font-style: italic;
+}
+.palette .tk-keyword {
+  color: var(--mdv-tk-keyword);
+}
+.palette .tk-string {
+  color: var(--mdv-tk-string);
+}
+.palette .tk-number {
+  color: var(--mdv-tk-number);
+}
+.palette .tk-title {
+  color: var(--mdv-tk-title);
+}
+.palette .tk-punct {
+  color: var(--mdv-tk-punct);
+}
+
+/* Stylesheet editor -------------------------------------------------------- */
+
+.editor {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.6;
+  /* Vertical only: a horizontally resizable editor can be dragged wider than
+     its card and out from under the layout. */
+  resize: vertical;
+  tab-size: 2;
+}
+
+.editor:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.editor-count {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pinned documents --------------------------------------------------------- */
+
+.pin-what {
+  flex: none;
+  margin-left: auto;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Backup ------------------------------------------------------------------- */
+
+.file {
+  display: block;
+  max-width: 100%;
+  margin-top: 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.file::file-selector-button {
+  margin-right: 10px;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.file:hover::file-selector-button {
+  background: var(--surface);
+}
+
+.file:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.file:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* What an import did, beyond succeeding. */
+.notes {
+  margin: 12px 0 0;
+  padding: 12px 14px 12px 32px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.notes li + li {
+  margin-top: 6px;
+}
+
 /* Narrow windows ----------------------------------------------------------- */
 
 @media (max-width: 560px) {
@@ -636,6 +906,20 @@ code {
   /* Stacked under its label now, so it may as well use the full width. */
   .slider {
     width: 100%;
+  }
+
+  .presets {
+    grid-template-columns: 1fr;
+  }
+
+  /* The pill needs a line of its own before the name is squeezed to nothing. */
+  .site:has(.pin-what) {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .pin-what {
+    margin-left: 0;
   }
 }
 

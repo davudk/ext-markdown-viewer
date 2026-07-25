@@ -1,0 +1,351 @@
+/* Markdown Viewer — presentation mode.
+
+   Two things are styled here: the launcher parked in a corner of a rendered
+   document, and the full-screen deck that opens from it.
+
+   Both are rendered through a portal onto <body>, which means they are
+   *outside* `#mdv-root`. Several rules in entrypoints/viewer.css are scoped to
+   that root — the box-sizing reset, the focus ring, the reduced-motion
+   override, the print strip — and none of them reach a portal. Each one is
+   restated below, as lightbox.css already does for the same reason.
+
+   The slide body deliberately carries the `mdv-body` class, so every document
+   rule in viewer.css — headings, lists, code, tables, blockquotes, the
+   highlight.js token theme — applies to a slide without being restated. What
+   this file changes is scale and containment: the size type is set at, and the
+   promise that nothing runs off the edge of the screen.
+
+   Every colour is a `--mdv-*` token, so both themes are covered without a
+   single media query. */
+
+/* ==========================================================================
+   1. Launcher
+
+   Bottom right, opposite the document toolbar, and muted until approached so
+   it reads as chrome rather than as content. The inset is a custom property so
+   that another piece of fixed chrome arriving in the same corner can be moved
+   out of its way in one declaration.
+   ========================================================================== */
+
+.mdv-present-launch {
+  --mdv-present-launch-inset: 0.6rem;
+
+  font: inherit;
+  font-family: var(--mdv-font-sans);
+  font-size: 0.78rem;
+  font-weight: 550;
+  line-height: 1;
+  position: fixed;
+  right: var(--mdv-present-launch-inset);
+  bottom: var(--mdv-present-launch-inset);
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0;
+  padding: 0.45em 0.65em;
+  color: var(--mdv-fg-muted);
+  background-color: var(--mdv-surface);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-sm);
+  cursor: pointer;
+  opacity: 0.55;
+  box-sizing: border-box;
+  transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease,
+    border-color var(--mdv-dur) ease;
+}
+
+.mdv-present-launch:hover,
+.mdv-present-launch:focus-visible {
+  opacity: 1;
+  color: var(--mdv-fg);
+  border-color: var(--mdv-border-strong);
+}
+
+/* ==========================================================================
+   2. Overlay shell
+
+   Opaque and at the top of the stacking order. It sits below the lightbox's
+   own z-index on purpose — if an image viewer does somehow open over a deck,
+   being able to see it is better than a dialog trapped behind an overlay.
+   ========================================================================== */
+
+.mdv-present {
+  position: fixed;
+  inset: 0;
+  z-index: 2147482000;
+  display: flex;
+
+  /* `--mdv-font-body` is written inline on `.mdv` and is therefore invisible
+     out here; the root token is the correct fallback rather than a concession,
+     since a slide is typeset for a room and not for a reading preference. */
+  font-family: var(--mdv-font-sans);
+  color: var(--mdv-fg);
+  background-color: var(--mdv-bg);
+
+  /* Nothing outside `#mdv-root` inherits the shell's box-sizing reset. */
+  box-sizing: border-box;
+}
+
+.mdv-present *,
+.mdv-present *::before,
+.mdv-present *::after {
+  box-sizing: border-box;
+}
+
+/* The `#mdv-root :focus-visible` rule in viewer.css cannot see this subtree. */
+.mdv-present :focus-visible {
+  outline: 2px solid var(--mdv-accent);
+  outline-offset: 2px;
+  border-radius: var(--mdv-radius-sm);
+}
+
+/* Focus lands here on open, and it is a surface rather than a control — the
+   ring would read as "this box is selected". */
+.mdv-present-dialog:focus {
+  outline: none;
+}
+
+.mdv-present-dialog {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  /* Both are what let the stage shrink instead of pushing the bar off the
+     bottom of a flex column. */
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ==========================================================================
+   3. Stage
+
+   The stage scrolls; the slide inside it is centred with `margin: auto`
+   rather than with `align-items`, because a centred flex item taller than its
+   container is clipped at the top and becomes unscrollable — which is exactly
+   the case a long slide produces.
+   ========================================================================== */
+
+.mdv-present-stage {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding: clamp(1rem, 3vw, 3.5rem) clamp(1rem, 5vw, 5rem);
+  overflow: auto;
+  /* The document behind is scroll-locked, but a trackpad flick that outruns
+     the stage would still rubber-band the page. */
+  overscroll-behavior: contain;
+  scrollbar-color: var(--mdv-scrollbar) transparent;
+}
+
+/* ==========================================================================
+   4. Slide typography
+
+   Scaled from the existing tokens rather than restated: the modular scale
+   (`--mdv-scale-*`), the leading and the block gap are all `em`- or
+   ratio-based, so setting one base size here carries every heading, margin and
+   line box up with it.
+
+   That base is a viewport clamp, not the reader's `--mdv-font-size`. A slide
+   has to be legible from the back of a room, and the room is described by the
+   screen it is projected on — 16px body text is unreadable projected, and so
+   is 24px.
+   ========================================================================== */
+
+.mdv-present .mdv-present-content {
+  margin: auto;
+  /* Overrides the document column's own measure, gutters and page padding. */
+  max-width: min(56ch, 100%);
+  padding: 0;
+
+  font-size: clamp(1.05rem, 1.5vw + 0.95vh, 2.35rem);
+  line-height: var(--mdv-line-height, var(--mdv-leading));
+  animation: mdv-present-in 180ms ease-out;
+}
+
+@keyframes mdv-present-in {
+  from {
+    opacity: 0;
+    translate: 0 0.6rem;
+  }
+}
+
+/* A slide that opens on its title should not have it hard against the top
+   edge, and the document's own first-child reset would leave it there. */
+.mdv-present .mdv-present-content > :first-child {
+  margin-top: 0;
+}
+
+.mdv-present .mdv-present-content > :last-child {
+  margin-bottom: 0;
+}
+
+/* ==========================================================================
+   5. Containment
+
+   Nothing may run off the slide. Wide things already scroll on their own axis
+   from viewer.css; what is added here is a height cap, so one 300-line code
+   block cannot push the rest of its slide past the bottom of the screen with
+   no way to tell that it did.
+   ========================================================================== */
+
+.mdv-present .mdv-present-content pre {
+  /* Smaller than the document's 0.86em: at slide scale a monospace line is
+     already twice the width of the same line in prose, and a fenced block that
+     wraps its every line is unreadable projected. */
+  font-size: 0.62em;
+  max-height: 58vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.mdv-present .mdv-present-content table {
+  font-size: 0.72em;
+  max-height: 58vh;
+  overflow: auto;
+}
+
+.mdv-present .mdv-present-content img,
+.mdv-present .mdv-present-content svg,
+.mdv-present .mdv-present-content video {
+  /* `contain` rather than a bare max-height, so a tall screenshot shrinks to
+     fit instead of being cropped to its top edge. */
+  max-height: 62vh;
+  width: auto;
+  object-fit: contain;
+}
+
+/* A mermaid diagram is an <svg> the add-on sized to the document column, in
+   attributes rather than in a stylesheet. Slides are wider than that column,
+   so the intrinsic size has to be overridden or every diagram is presented at
+   reading size in the middle of the screen. */
+.mdv-present .mdv-present-content svg {
+  width: auto;
+  max-width: 100%;
+}
+
+/* ==========================================================================
+   6. Progress and bar
+   ========================================================================== */
+
+.mdv-present-progress {
+  flex: none;
+  height: 2px;
+  background-color: var(--mdv-border);
+}
+
+.mdv-present-progress > span {
+  display: block;
+  height: 100%;
+  background-color: var(--mdv-accent);
+  transition: width var(--mdv-dur) ease;
+}
+
+.mdv-present-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  background-color: var(--mdv-surface);
+  border-top: 1px solid var(--mdv-border);
+}
+
+.mdv-present-count {
+  margin: 0;
+  color: var(--mdv-fg-muted);
+  font-weight: 550;
+  /* The counter changes on every step; proportional digits make it twitch. */
+  font-variant-numeric: tabular-nums;
+  /* A long slide title must not push the controls off the bar. */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mdv-present-actions {
+  flex: none;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.mdv-present-button {
+  font: inherit;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0.5em;
+  color: var(--mdv-fg-muted);
+  background-color: var(--mdv-bg);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-sm);
+  cursor: pointer;
+  transition: color var(--mdv-dur) ease, border-color var(--mdv-dur) ease;
+}
+
+.mdv-present-button:hover:not(:disabled) {
+  color: var(--mdv-fg);
+  border-color: var(--mdv-border-strong);
+}
+
+.mdv-present-button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.mdv-present-icon {
+  flex: none;
+  display: block;
+}
+
+/* ==========================================================================
+   7. Narrow windows
+   ========================================================================== */
+
+@media (max-width: 30rem) {
+  .mdv-present-stage {
+    padding: 0.75rem;
+  }
+
+  .mdv-present .mdv-present-content {
+    max-width: 100%;
+  }
+}
+
+/* ==========================================================================
+   8. Motion and print
+
+   Both blocks exist because their counterparts in viewer.css are scoped to
+   `#mdv-root`, and `#mdv-root *` / `#mdv-root [data-mdv-chrome]` never match a
+   node inside a portal. The attribute is still set in the markup so the intent
+   stays greppable and so nothing breaks if this ever moves back into the shell.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-present-launch,
+  .mdv-present-button,
+  .mdv-present-progress > span {
+    transition: none;
+  }
+
+  /* The slide changing is information the counter already carries; the reader
+     does not need it thrown at them as movement. */
+  .mdv-present .mdv-present-content {
+    animation: none;
+  }
+}
+
+/* A presentation is on-screen chrome in its entirety. Printing while one is
+   open prints the document, not the slide that happened to be showing. */
+@media print {
+  .mdv-present,
+  .mdv-present-launch {
+    display: none !important;
+  }
+}
