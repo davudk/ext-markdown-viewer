@@ -8,8 +8,14 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 
-import { SEARCH_MATCH_LIMIT, SHORTCUTS } from '@/lib/config';
+import {
+  SEARCH_DOCUMENT_KEY,
+  SEARCH_MATCH_LIMIT,
+  SHORTCUTS,
+} from '@/lib/config';
 import type { Heading } from '@/lib/markdown';
+import { isFailure, searchClient } from '@/lib/search-client';
+import { snippetAround, type RawMatch, type SearchOptions } from '@/lib/search';
 
 import './search.css';
 
@@ -48,10 +54,28 @@ const PAINT_CURRENT = 'mdv-search-current';
  * every heading, so "Copy" and "Copied" are real text nodes sitting in the body
  * — without this, searching for `copy` would hit every code block in the file.
  * The KaTeX add-on emits its MathML twin of every formula alongside the visible
- * markup, which would count every equation twice.
+ * markup, which would count every equation twice. `[data-mdv-chrome]` covers the
+ * sidebar, the toolbar and every control the viewer grafts on.
+ *
+ * The last two are text that is *there but not visible*, which is worse than
+ * text that is somebody else's: a match inside it is counted, is announced, and
+ * then cannot be scrolled to, because it has no box. `[data-mdv-folded]` is what
+ * `HeadingFold.tsx` writes onto a collapsed section — it suspends its folds
+ * while this panel is up, so in practice the attribute is gone by the time the
+ * index is built, but the index must not depend on another component's courtesy.
  */
-const SKIP_SUBTREE =
-  'script, style, template, svg, .mdv-copy, .mdv-anchor, .katex-mathml, [data-mdv-chrome]';
+const SKIP_SUBTREE = [
+  'script',
+  'style',
+  'template',
+  'svg',
+  '.mdv-copy',
+  '.mdv-anchor',
+  '.katex-mathml',
+  '[data-mdv-chrome]',
+  '[data-mdv-folded]',
+  '[hidden]',
+].join(', ');
 
 const HEADING_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6']);
 
@@ -78,8 +102,6 @@ interface DocIndex {
   headings: Heading[];
   /** Every searchable text node, concatenated. */
   text: string;
-  /** `text` lowercased, offset-for-offset. */
-  lower: string;
   nodes: Text[];
   /** `starts[i]` is where `nodes[i]` begins in `text`. Ascending, so bisectable. */
   starts: number[];
@@ -108,11 +130,17 @@ const NO_RESULT: Result = { matches: [], truncated: false };
  * One TreeWalker pass over the whole document.
  *
  * This is the expensive thing search does, and it happens once per document
- * rather than once per keystroke: everything after this point is `indexOf` over
- * a string. Both element and text nodes are visited, because the elements are
- * what carry the section boundaries — a heading pushes a boundary at the offset
- * its own text is about to land on, so the section a match belongs to is a
- * pointer walk rather than a DOM lookup.
+ * rather than once per keystroke: everything after this point is offset
+ * arithmetic over a string the worker already holds. Both element and text nodes
+ * are visited, because the elements are what carry the section boundaries — a
+ * heading pushes a boundary at the offset its own text is about to land on, so
+ * the section a match belongs to is a pointer walk rather than a DOM lookup.
+ *
+ * `nodes` and `starts` are the half of this that cannot cross a postMessage.
+ * They stay here; `text` is what goes to the worker, and an offset coming back
+ * is turned into a Range against them. That is the whole split, and it is why an
+ * edit anywhere in the body has to invalidate the index rather than patch it —
+ * see the mutation observer below.
  */
 function buildIndex(body: HTMLElement, headings: Heading[]): DocIndex {
   const byId = new Map(headings.map((heading) => [heading.id, heading]));
@@ -161,101 +189,39 @@ function buildIndex(body: HTMLElement, headings: Heading[]): DocIndex {
     length += text.data.length;
   }
 
-  const text = parts.join('');
-  return { body, headings, text, lower: toLower(text), nodes, starts, sections };
+  return { body, headings, text: parts.join(''), nodes, starts, sections };
 }
 
 /**
- * Lowercase without changing the length.
+ * Offsets from the worker, given back their place in the document.
  *
- * A handful of code points grow when lowercased (`İ` becomes two characters),
- * and a single one of them anywhere in a README would slide every offset after
- * it off its text node — matches would then be painted in the wrong place
- * rather than merely be missed. The cheap whole-string form is checked and only
- * falls back to the per-character pass when it actually happened.
+ * Sections are assigned by advancing a pointer through the boundary list, which
+ * works because both lists are already in document order. The snippets are cut
+ * here rather than in the worker for the same reason the node index stays here:
+ * this thread already has the text, and sending it back would be sending it
+ * twice.
  */
-function toLower(text: string): string {
-  const lower = text.toLowerCase();
-  if (lower.length === text.length) return lower;
-
-  let out = '';
-  for (const character of text) {
-    const folded = character.toLowerCase();
-    out += folded.length === character.length ? folded : character;
-  }
-  return out;
-}
-
-const WORD_CHARACTER = /[\p{L}\p{N}_]/u;
-
-function isWordEdge(haystack: string, start: number, end: number): boolean {
-  const before = start > 0 ? haystack[start - 1] : '';
-  const after = end < haystack.length ? haystack[end] : '';
-  return !WORD_CHARACTER.test(before) && !WORD_CHARACTER.test(after);
-}
-
-/** Whitespace collapsed to single spaces, so a snippet is always one line. */
-function tidy(text: string): string {
-  return text.replace(/\s+/g, ' ');
-}
-
-/**
- * Every match, in document order, capped at SEARCH_MATCH_LIMIT.
- *
- * Plain `indexOf` over the cached string — no regex, and nothing that touches
- * the DOM. Sections are assigned by advancing a pointer through the boundary
- * list, which works because both lists are already in document order.
- */
-function findMatches(
-  index: DocIndex,
-  query: string,
-  caseSensitive: boolean,
-  wholeWord: boolean,
-): Result {
-  const haystack = caseSensitive ? index.text : index.lower;
-  const needle = caseSensitive ? query : toLower(query);
-  if (needle.length === 0) return NO_RESULT;
-
+function decorate(index: DocIndex, found: RawMatch[]): Match[] {
   const matches: Match[] = [];
   let section = 0;
-  let from = 0;
 
-  while (matches.length < SEARCH_MATCH_LIMIT) {
-    const at = haystack.indexOf(needle, from);
-    if (at < 0) return { matches, truncated: false };
-
-    const end = at + needle.length;
-
-    if (wholeWord && !isWordEdge(haystack, at, end)) {
-      // One character on, not past the whole candidate: `bookkeeper` contains a
-      // later `keep` that a longer skip would step over.
-      from = at + 1;
-      continue;
-    }
-
+  for (const { start, end } of found) {
     while (
       section + 1 < index.sections.length &&
-      index.sections[section + 1].start <= at
+      index.sections[section + 1].start <= start
     ) {
       section += 1;
     }
 
     matches.push({
-      start: at,
+      start,
       end,
       section,
-      // Trimmed at the outer edges only: the block boundaries a snippet spans
-      // are runs of newlines, and leaving them as spaces indents every result.
-      before: tidy(index.text.slice(Math.max(0, at - SNIPPET_BEFORE), at)).trimStart(),
-      hit: tidy(index.text.slice(at, end)),
-      after: tidy(index.text.slice(end, end + SNIPPET_AFTER)).trimEnd(),
+      ...snippetAround(index.text, start, end, SNIPPET_BEFORE, SNIPPET_AFTER),
     });
-
-    // Non-overlapping, which is what a reader counting occurrences expects.
-    from = end;
   }
 
-  return { matches, truncated: haystack.indexOf(needle, from) >= 0 };
+  return matches;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -280,7 +246,7 @@ function locate(index: DocIndex, offset: number): { node: Text; offset: number }
  * A live Range over a match. Matches routinely span text nodes — `**bold** word`
  * is three of them — so start and end are resolved independently.
  */
-function rangeFor(index: DocIndex, match: Match): Range | null {
+function rangeFor(index: DocIndex, match: RawMatch): Range | null {
   if (index.nodes.length === 0) return null;
 
   try {
@@ -443,16 +409,20 @@ function unpaint() {
 /* -------------------------------------------------------------------------- */
 
 /**
- * In-document search: a query field, a live count, next/previous, and a result
- * list grouped by the section each match falls under.
+ * Quick find: a query field, a live count, next/previous, and a result list
+ * grouped by the section each match falls under.
  *
  * It takes over ctrl/cmd+F deliberately, which is only defensible because it
  * does more than the bar it replaces — the section grouping is the reason it
- * exists. Escape always closes it and hands focus back.
+ * exists. Escape always closes it and hands focus back. The sidebar's Search tab
+ * is the other half of the feature and answers a different question: this one is
+ * find-next through what is on screen, that one is every match in the file, with
+ * line numbers, across every file in a folder.
  *
- * Nothing here writes to the document: the index is read once per document with
- * a TreeWalker and searched as a string, and matches are painted as ranges. The
- * only DOM this component owns is its own panel.
+ * Nothing here writes to the document. The index is read once per document with
+ * a TreeWalker, the *text* of it is handed to the search worker, and the offsets
+ * that come back are painted as ranges. The only DOM this component owns is its
+ * own panel.
  */
 export function Search({ headings }: { headings: Heading[] }) {
   const [open, setOpen] = useState(false);
@@ -469,6 +439,8 @@ export function Search({ headings }: { headings: Heading[] }) {
   const indexRef = useRef<DocIndex | null>(null);
   /** `current`, readable between renders. See `step`. */
   const currentRef = useRef(0);
+  /** Which search the answers arriving are allowed to be from. */
+  const runRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -535,12 +507,15 @@ export function Search({ headings }: { headings: Heading[] }) {
   // The walk is the one expensive step, and on a multi-MB document it is the
   // reader's first keystroke that would otherwise pay for it. Opening the panel
   // is the free moment: the index is warmed while they are still reaching for
-  // the keyboard, and the query effect below builds it synchronously anyway if
-  // they get there first.
+  // the keyboard, and the worker is handed the text at the same time, so the
+  // first query is a postMessage of a few bytes rather than of the document.
   useEffect(() => {
     if (!open || typeof requestIdleCallback !== 'function') return;
 
-    const handle = requestIdleCallback(() => void getIndex());
+    const handle = requestIdleCallback(() => {
+      const index = getIndex();
+      if (index) searchClient().put(SEARCH_DOCUMENT_KEY, index.text);
+    });
     return () => cancelIdleCallback(handle);
   }, [open, getIndex]);
 
@@ -552,7 +527,8 @@ export function Search({ headings }: { headings: Heading[] }) {
 
       // ctrl/cmd+F, from anywhere including a field the reader is typing in:
       // the takeover is only honest if it is unconditional, and a modified F
-      // is never part of what somebody is typing.
+      // is never part of what somebody is typing. Shift+ctrl/cmd+F belongs to
+      // the sidebar's Search tab, so it is left alone here.
       if (
         (event.ctrlKey || event.metaKey) &&
         !event.altKey &&
@@ -608,20 +584,58 @@ export function Search({ headings }: { headings: Heading[] }) {
     const index = getIndex();
     if (!index) return;
 
-    const found = findMatches(index, settled, caseSensitive, wholeWord);
-    const next = matchNearViewport(index, found.matches);
+    const client = searchClient();
+    client.put(SEARCH_DOCUMENT_KEY, index.text);
 
-    setResult(found);
-    setCurrent(next);
-    currentRef.current = next;
-    // Instant while typing: a smooth scroll per keystroke would still be
-    // travelling when the next one lands.
-    reveal(index, found.matches[next], false);
+    // One controller per keystroke that survived the debounce. Superseding a
+    // search is the normal case here, not the exception.
+    const controller = new AbortController();
+    runRef.current += 1;
+    const runId = runRef.current;
+
+    const options: SearchOptions = { caseSensitive, wholeWord, regex: false };
+
+    void client
+      .search({
+        runId,
+        key: SEARCH_DOCUMENT_KEY,
+        query: settled,
+        options,
+        detail: 'offsets',
+        limit: SEARCH_MATCH_LIMIT,
+        signal: controller.signal,
+      })
+      .then((answer) => {
+        // A late answer to a query the reader has already typed past.
+        if (runId !== runRef.current) return;
+        // `invalid` cannot happen without the regex option, and a timeout on a
+        // literal scan means the document moved; either way there is nothing
+        // truthful to show but an empty list.
+        if (isFailure(answer) || answer.kind !== 'result') {
+          setResult(NO_RESULT);
+          setCurrent(0);
+          return;
+        }
+
+        const matches = decorate(index, answer.matches as RawMatch[]);
+        const next = matchNearViewport(index, matches);
+
+        setResult({ matches, truncated: answer.truncated });
+        setCurrent(next);
+        currentRef.current = next;
+        // Instant while typing: a smooth scroll per keystroke would still be
+        // travelling when the next one lands.
+        reveal(index, matches[next], false);
+      });
+
+    return () => controller.abort();
   }, [open, settled, caseSensitive, wholeWord, revision, getIndex]);
 
   // Nothing this component does mutates the document, so every callback here is
   // somebody else's edit — a mermaid diagram swapping in, live reload replacing
-  // the body — after which the cached offsets are fiction.
+  // the body, a section being folded — after which the cached offsets are
+  // fiction. The attribute filter is the fold: it changes no text and moves no
+  // node, but it changes what the index is allowed to contain.
   useEffect(() => {
     if (!open) return;
 
@@ -639,6 +653,8 @@ export function Search({ headings }: { headings: Heading[] }) {
       childList: true,
       characterData: true,
       subtree: true,
+      attributes: true,
+      attributeFilter: ['data-mdv-folded', 'hidden'],
     });
 
     return () => {

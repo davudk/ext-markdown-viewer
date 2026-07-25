@@ -116,6 +116,23 @@ export const SHORTCUTS = {
   search: '/',
 } as const;
 
+/**
+ * Full-document search, held apart from `SHORTCUTS` for the same reason the
+ * command palette is: it is only ever matched with ctrl/cmd *and* shift held.
+ * `f` on its own is a character, and quick find already owns the unshifted form.
+ */
+export const SEARCH_ALL_KEY = 'f';
+
+/**
+ * The command palette's key, held apart from `SHORTCUTS` because it is not one.
+ *
+ * `SHORTCUTS` is a table of unmodified single keys, and `useKeyboardShortcuts`
+ * refuses any event carrying a modifier — putting `k` in there would bind a bare
+ * `k` as well, which is a character in every field on the page. This is matched
+ * only with ctrl or cmd held, the way every other palette in the world spells it.
+ */
+export const COMMAND_PALETTE_KEY = 'k';
+
 /** Export formats. Both are produced client-side; nothing is uploaded. */
 export const EXPORT_FORMATS = [
   { value: 'html', label: 'HTML', extension: '.html' },
@@ -126,6 +143,65 @@ export type ExportFormat = (typeof EXPORT_FORMATS)[number]['value'];
 
 /** How many search matches to mark before giving up on a pathological query. */
 export const SEARCH_MATCH_LIMIT = 2000;
+
+/**
+ * How many rows the sidebar's result list will build before it stops counting.
+ *
+ * Lower than SEARCH_MATCH_LIMIT because these are not the same object. A quick
+ * find match is a painted range and a number in a counter; a panel result is a
+ * row carrying a breadcrumb, a line number and a snippet, and a thousand of
+ * those already outlasts anybody's willingness to scroll them. The panel says so
+ * rather than silently stopping.
+ */
+export const SEARCH_RESULT_LIMIT = 1000;
+
+/** Files a folder-wide search will read before it reports the rest unsearched. */
+export const SEARCH_FILE_LIMIT = 2000;
+
+/**
+ * Keystroke settling time before a query is dispatched, in milliseconds.
+ *
+ * One search per pause, not one per keypress. Quick find uses a shorter one of
+ * its own — it is searching a document already in memory and the reader is
+ * watching the count move — while the panel may be about to read a thousand
+ * files off a disk.
+ */
+export const SEARCH_DEBOUNCE_MS = 150;
+
+/**
+ * How long one document may be scanned before the scan is abandoned.
+ *
+ * This is the ReDoS budget, and `lib/search.ts` is explicit about the half of
+ * the problem it can and cannot solve: the clock is only read between matches,
+ * so it catches a pattern that is slow *often* and not one that is catastrophic
+ * *once*. The second half is `lib/search-client.ts`, which can terminate a
+ * worker that has stopped answering — the only thing that actually stops a
+ * regular expression already running.
+ */
+export const SEARCH_REGEX_BUDGET_MS = 50;
+
+/**
+ * How long the client waits for a worker to answer before writing it off.
+ *
+ * Generous next to the budget above, because it has to cover a genuinely large
+ * document as well as a wedged one, and terminating a worker that was merely
+ * busy costs the reader a repeated search.
+ */
+export const SEARCH_WORKER_TIMEOUT_MS = 3000;
+
+/**
+ * Keys the worker caches documents under.
+ *
+ * Two, because the two halves of search read two different texts and both are
+ * "this document". Quick find searches what is *rendered* — the text extracted
+ * from the DOM, which is what it can paint ranges over. The panel searches the
+ * markdown *source*, because a line number is a fact about a file and not about
+ * a rendered tree. Files pulled out of a folder are keyed by their path under
+ * the third prefix, which is what keeps a file called `source` from evicting it.
+ */
+export const SEARCH_DOCUMENT_KEY = 'rendered';
+export const SEARCH_SOURCE_KEY = 'source';
+export const SEARCH_FILE_KEY_PREFIX = 'file:';
 
 /**
  * Reading speed for whitespace-delimited prose, in words per minute.
@@ -163,11 +239,12 @@ export const FOLD_LEVELS = [1, 2, 3, 4, 5, 6];
  *
  * Only the identity and the label live here; `Sidebar.tsx` maps each id to the
  * component that draws it. Adding a tab is an entry here plus a line in that
- * map — deliberately, because a third one (Search) is already planned.
+ * map — which is exactly what the third one, Search, turned out to cost.
  */
 export const SIDEBAR_TABS = [
   { id: 'outline', label: 'Outline' },
   { id: 'files', label: 'Files' },
+  { id: 'search', label: 'Search' },
 ] as const;
 
 export type SidebarTabId = (typeof SIDEBAR_TABS)[number]['id'];
@@ -259,15 +336,165 @@ export const ADDONS = {
   // The stylesheet cannot be named `katex-addon.css`: WXT treats every file in
   // entrypoints/ as an entrypoint and refuses two with the same base name.
   katex: { js: 'katex-addon.js', css: ['assets/katex-theme.css'] },
+  // Export is here for the same reason mermaid is, only the trigger differs: a
+  // document cannot be inspected for "will be exported", so the menu asks for
+  // this the first time a format is picked rather than at render time.
+  export: { js: 'export-addon.js', css: [] as string[] },
+  // jsdiff, and nothing else. No stylesheet: unlike mermaid and katex, the
+  // comparison's UI is a React component in the renderer bundle, so its CSS is
+  // already inside `assets/renderer.css`. Only the engine is deferred.
+  diff: { js: 'diff-addon.js', css: [] as string[] },
 } as const;
 
 export type AddonName = keyof typeof ADDONS;
 
+/**
+ * How long to wait for an add-on's bridge to appear after the service worker
+ * has reported the injection succeeded.
+ *
+ * `executeScript` resolves once the file has finished evaluating, so in practice
+ * the bridge is already there when the promise settles and this never elapses.
+ * It exists for the one case where it isn't — a bundle that threw on its way up
+ * — so that ends in a message the reader can act on rather than a spinner that
+ * never stops.
+ */
+export const ADDON_READY_TIMEOUT_MS = 8_000;
+
 /** Marks a code block the mermaid add-on should replace with a diagram. */
 export const MERMAID_LANGUAGE = 'mermaid';
 
-/** Class the KaTeX extension puts on math it has rendered. */
+/** Class KaTeX puts on math it has rendered. */
 export const MATH_CLASS = 'katex';
+
+/**
+ * What the pipeline emits in place of a formula, for the KaTeX add-on to render.
+ *
+ * The TeX travels as the element's *text*, not in a `data-` attribute:
+ * PURIFY_CONFIG sets `ALLOW_DATA_ATTR: false`, so an attribute would be stripped
+ * on the way out of the parser. Text content survives sanitization, is escaped
+ * by construction, and is the reason a reader whose add-on never arrives still
+ * sees `x^2` rather than a blank space.
+ */
+export const MATH_PLACEHOLDER_CLASS = 'mdv-math';
+export const MATH_INLINE_CLASS = 'mdv-math-inline';
+export const MATH_DISPLAY_CLASS = 'mdv-math-display';
+
+/**
+ * Where the export add-on publishes its entry point.
+ *
+ * A property on the isolated world's `window`, which is shared by every content
+ * script this extension puts in the frame and invisible to the page itself. The
+ * add-on and `components/ExportMenu.tsx` are two scripts in one realm rather
+ * than two realms, so the menu can hand over a live `Element` and a progress
+ * callback and take back a promise — no serialization, no id bookkeeping, and
+ * no request that can be left waiting for a reply that never comes.
+ */
+export const EXPORT_BRIDGE_KEY = '__mdvExport';
+
+/* -------------------------------------------------------------------------- */
+/* Diagram pan/zoom and export                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Zoom limits and the multiplier one button press or `+`/`-` applies.
+ *
+ * `min` is below 1 because the reason to zoom a diagram out is that it is
+ * already wider than the measure; `max` is the point past which the vectors
+ * stop carrying more than the screen can show.
+ */
+export const MERMAID_ZOOM = { min: 0.25, max: 12, step: 1.4 } as const;
+
+/** Pixels a diagram moves per arrow-key press. */
+export const MERMAID_PAN_STEP_PX = 48;
+
+/**
+ * Retina. A diagram exported at 1× is a screenshot of a vector drawing and
+ * looks like one the moment it is placed in anything.
+ */
+export const MERMAID_PNG_SCALE = 2;
+
+/** Ceiling on either PNG dimension, so a wall-sized diagram cannot exhaust memory. */
+export const MERMAID_PNG_MAX_PX = 8_192;
+
+/** Size for a diagram whose SVG carries neither a viewBox nor an explicit one. */
+export const MERMAID_EXPORT_FALLBACK = { width: 960, height: 540 } as const;
+
+/** Basename of an exported diagram, before its index and extension. */
+export const MERMAID_EXPORT_BASENAME = 'diagram';
+
+/* -------------------------------------------------------------------------- */
+/* Document comparison                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Where the diff add-on publishes jsdiff, on the same isolated-world `window`
+ * that `EXPORT_BRIDGE_KEY` above uses and for the same reasons — one realm
+ * shared by every script this extension injects into the frame, invisible to
+ * the document, so a live function can simply be handed over.
+ *
+ * A property rather than a module binding because each injection re-evaluates
+ * the add-on with a fresh module scope; see the header of
+ * `entrypoints/mermaid-addon.ts` for the same constraint solved the other way.
+ */
+export const DIFF_BRIDGE_KEY = '__mdvDiff';
+
+/** Fired on `window` once the key above is set, so a waiter need not poll. */
+export const DIFF_READY_EVENT = 'mdv-diff-ready';
+
+/** How the source diff lays the two files out. */
+export type DiffLayout = 'split' | 'unified';
+
+/** Which representation of the two files is compared. */
+export type DiffMode = 'source' | 'rendered';
+
+/**
+ * Split source is the default because it is the only combination that answers
+ * both questions at once — what changed, and what the line now says — without
+ * the reader reconstructing one from the other. Unified is for narrow windows
+ * and long lines; rendered is for prose, where the markup is the noise.
+ */
+export const DEFAULT_DIFF_MODE: DiffMode = 'source';
+export const DEFAULT_DIFF_LAYOUT: DiffLayout = 'split';
+
+export const DIFF_MODE_OPTIONS: ReadonlyArray<Option<DiffMode>> = [
+  { value: 'source', label: 'Source' },
+  { value: 'rendered', label: 'Rendered' },
+];
+
+export const DIFF_LAYOUT_OPTIONS: ReadonlyArray<Option<DiffLayout>> = [
+  { value: 'split', label: 'Split' },
+  { value: 'unified', label: 'Unified' },
+];
+
+/** Unchanged lines kept either side of a change before the run is folded away. */
+export const DIFF_CONTEXT_LINES = 3;
+
+/**
+ * A run shorter than this is left alone: folding it away would replace four
+ * rows with one row plus a gap marker, which is not a saving.
+ */
+export const DIFF_MIN_COLLAPSE_LINES = 9;
+
+/**
+ * Lines per file above which the comparison refuses rather than tries.
+ *
+ * jsdiff is O(nd) and every row is real DOM; a pair of generated files can be
+ * tens of thousands of lines each, and a comparison that locks the tab for a
+ * minute is worse than one that says up front it will not run.
+ */
+export const DIFF_MAX_LINES = 20_000;
+
+/** The markdown source is highlighted as markdown, so a diff still reads as one. */
+export const DIFF_HIGHLIGHT_LANGUAGE = 'markdown';
+
+/**
+ * Keys that open a row's menu in the folder tree, alongside right-click.
+ *
+ * `ContextMenu` and Shift-F10 are what the platform already binds. `c` is here
+ * because a Mac keyboard has neither, and a menu only a mouse can open is a
+ * menu a good number of readers do not have.
+ */
+export const CONTEXT_MENU_KEYS = ['ContextMenu', 'F10', 'c'];
 
 /* -------------------------------------------------------------------------- */
 /* Permissions                                                                 */
@@ -911,6 +1138,150 @@ export const THEME_PRESETS = [
 export type ThemePresetId = (typeof THEME_PRESETS)[number]['id'];
 
 /* -------------------------------------------------------------------------- */
+/* Command palette and filters                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The four kinds of thing the palette can turn up, and how each row labels
+ * itself. A result that does not say what it *is* is a trap: "Export" as a
+ * heading in the document and "Export as HTML" the command look identical in a
+ * list, and only one of them does anything when you press Enter.
+ */
+export const PALETTE_SOURCES = {
+  command: 'Command',
+  heading: 'Heading',
+  file: 'File',
+  setting: 'Setting',
+} as const;
+
+export type PaletteSource = keyof typeof PALETTE_SOURCES;
+
+/** The order sources are grouped in when the query is empty. */
+export const PALETTE_SOURCE_ORDER: ReadonlyArray<PaletteSource> = [
+  'command',
+  'setting',
+  'heading',
+  'file',
+];
+
+/**
+ * Every command, as a description only.
+ *
+ * Deliberately no handlers here: exporting, opening a folder and toggling the
+ * raw view are all owned by components the palette has no reference to, so a
+ * command is a row of text plus an id, and `lib/commands.ts` pairs the id with
+ * whatever the shell was able to supply. A command whose capability is missing
+ * is dropped from the list rather than rendered dead — see `buildCommands`.
+ *
+ * `keywords` is matched but never shown, so a reader who thinks "diff" finds
+ * "Compare files" and one who thinks "pdf" finds "Print".
+ */
+export const PALETTE_COMMANDS = [
+  { id: 'toggle-theme', title: 'Toggle theme', keywords: 'dark light appearance colour color' },
+  { id: 'toggle-toc', title: 'Toggle sidebar', keywords: 'toc outline contents table navigation' },
+  { id: 'toggle-raw', title: 'Toggle raw text', keywords: 'source markdown rendered plain' },
+  { id: 'export-html', title: 'Export as HTML', keywords: 'save download file web page' },
+  { id: 'export-docx', title: 'Export as Word', keywords: 'docx save download file document' },
+  { id: 'print', title: 'Print', keywords: 'pdf paper printer' },
+  { id: 'open-folder', title: 'Open folder…', keywords: 'files browse directory local disk' },
+  { id: 'compare-files', title: 'Compare files…', keywords: 'diff difference against changes' },
+  { id: 'change-font', title: 'Change font', keywords: 'typeface serif sans mono family' },
+  { id: 'text-larger', title: 'Increase text size', keywords: 'font bigger zoom larger' },
+  { id: 'text-smaller', title: 'Decrease text size', keywords: 'font smaller zoom shrink' },
+  { id: 'toggle-live-reload', title: 'Toggle auto-refresh', keywords: 'live reload watch update' },
+  { id: 'open-settings', title: 'Open settings…', keywords: 'options preferences configure' },
+] as const;
+
+export type PaletteCommandId = (typeof PALETTE_COMMANDS)[number]['id'];
+
+/**
+ * A setting the palette can act on, and the values it moves between.
+ *
+ * `options` absent means the setting is a boolean and the row flips it; present
+ * means the row advances to the next value in this list and wraps. Either way a
+ * Setting row *changes something* — that is the consistency rule, and it is why
+ * "Open settings…" is a Command rather than a thirteenth Setting row.
+ */
+export interface PaletteSetting {
+  key: keyof Settings;
+  label: string;
+  /** Matched but not shown, like `PALETTE_COMMANDS.keywords`. */
+  keywords?: string;
+  /** Values to cycle through. Omitted for an on/off setting. */
+  options?: ReadonlyArray<{ value: string; label: string }>;
+}
+
+export const PALETTE_SETTINGS: ReadonlyArray<PaletteSetting> = [
+  { key: 'theme', label: 'Theme', keywords: 'dark light auto appearance', options: THEME_OPTIONS },
+  {
+    key: 'themePreset',
+    label: 'Colour preset',
+    keywords: 'palette solarized nord gruvbox contrast',
+    // Derived rather than restated, so a preset added above appears here too.
+    options: THEME_PRESETS.map((preset) => ({ value: preset.id, label: preset.label })),
+  },
+  {
+    key: 'fontFamily',
+    label: 'Font',
+    keywords: 'typeface serif sans mono',
+    options: FONT_FAMILY_OPTIONS,
+  },
+  {
+    key: 'contentWidth',
+    label: 'Content width',
+    keywords: 'measure narrow wide column line length',
+    options: CONTENT_WIDTH_OPTIONS,
+  },
+  { key: 'showToc', label: 'Sidebar', keywords: 'toc outline contents' },
+  { key: 'liveReload', label: 'Auto-refresh', keywords: 'live reload watch' },
+  { key: 'rememberScroll', label: 'Remember scroll position', keywords: 'restore place resume' },
+  { key: 'mermaid', label: 'Mermaid diagrams', keywords: 'graph chart flowchart' },
+  { key: 'math', label: 'Math rendering', keywords: 'katex tex latex formula equation' },
+  { key: 'lightbox', label: 'Image lightbox', keywords: 'picture zoom full size' },
+  { key: 'externalLinks', label: 'External link markers', keywords: 'outbound indicator' },
+  { key: 'presentation', label: 'Presentation mode', keywords: 'slides deck present' },
+  {
+    key: 'slideSplit',
+    label: 'Slide breaks',
+    keywords: 'presentation split rule heading',
+    options: SLIDE_SPLIT_OPTIONS,
+  },
+  { key: 'readingStats', label: 'Reading time', keywords: 'word count statistics' },
+  { key: 'readingProgress', label: 'Reading progress bar', keywords: 'scroll indicator' },
+  { key: 'headingFold', label: 'Collapsible headings', keywords: 'fold collapse sections' },
+];
+
+/**
+ * Rows the palette renders at once.
+ *
+ * Low on purpose. Unlike the search panel — which is counting occurrences and
+ * has to be able to say "2,000" — a palette that offers sixty answers has
+ * already failed to answer; the reader types another character instead.
+ */
+export const PALETTE_RESULT_LIMIT = 60;
+
+/** Rows a sidebar filter box renders at once. Higher: a file tree is a list, not an answer. */
+export const FILTER_RESULT_LIMIT = 300;
+
+/**
+ * Fuse.js scoring, shared by the palette and both filter boxes.
+ *
+ * `ignoreLocation` is the load-bearing one. Fuse's default scoring decays with
+ * distance from the start of the string, which is right for prose and wrong for
+ * every list here: `docs/reference/settings.md` would score its own basename
+ * near zero because it is forty characters in.
+ *
+ * The threshold is deliberately tighter than Fuse's 0.6 default. A palette is
+ * judged on its first row, and 0.6 admits matches with no shared prefix at all.
+ */
+export const FUZZY_OPTIONS = {
+  includeScore: true,
+  ignoreLocation: true,
+  threshold: 0.4,
+  minMatchCharLength: 1,
+} as const;
+
+/* -------------------------------------------------------------------------- */
 /* Settings export/import                                                      */
 /* -------------------------------------------------------------------------- */
 
@@ -1061,19 +1432,22 @@ export const WIKILINK_CLASS = 'mdv-wikilink';
  * sneak back in. Everything here only narrows or pins.
  */
 export const PURIFY_CONFIG: PurifyConfig = {
-  // `mathMl` and `svg` are both here for KaTeX, which needs both halves of its
-  // output: the <math> tree screen readers actually read, and the inline <svg>
-  // that draws radicals and stretchy arrows — `\sqrt{x}` loses its surd
-  // entirely without it. Neither profile admits script, event handlers,
-  // <foreignObject> or <use>; they widen what may *appear*, not what may run.
-  USE_PROFILES: { html: true, mathMl: true, svg: true },
-  // The one deliberate hole in the MathML profile, reopened by hand. DOMPurify
-  // disallows this family because `<annotation-xml>` is an mXSS vector — it can
-  // carry HTML into the MathML namespace. Its two plain siblings cannot, and
-  // dropping them is not free: `KEEP_CONTENT` then hoists the raw TeX out of
-  // the discarded `<annotation>` and into `<math>` as loose text, which every
-  // screen reader reads aloud. `annotation-xml` stays disallowed.
-  ADD_TAGS: ['semantics', 'annotation'],
+  // `svg` is here for the alert and container icons, which `lib/markdown.ts`
+  // writes as inline SVG and this pass would otherwise delete — every `> [!NOTE]`
+  // would lose its mark. The profile admits no script, no event handlers, no
+  // <foreignObject> and no <use>; it widens what may *appear*, not what may run.
+  //
+  // `mathMl` used to be here too, for the KaTeX output the parser emitted, along
+  // with a hand-reopened `ADD_TAGS: ['semantics', 'annotation']` — DOMPurify
+  // disallows that family because `<annotation-xml>` can carry HTML into the
+  // MathML namespace. Nothing in the pipeline produces MathML any more: math
+  // leaves here as a placeholder and is rendered by `entrypoints/katex-addon.ts`,
+  // which sanitizes its own output with those two widenings applied to KaTeX
+  // markup alone. Keeping them here would mean every .md file on the web could
+  // hand us MathML in raw HTML for no remaining benefit, so they are gone. The
+  // cost, stated plainly: a document that hand-writes `<math>` now reads as its
+  // own text rather than as a formula.
+  USE_PROFILES: { html: true, svg: true },
   // `colspan`/`rowspan` arrive with MultiMarkdown tables. Both are in
   // DOMPurify's defaults; pinning them here is the same insurance as `align`.
   ADD_ATTR: ['align', 'type', 'checked', 'disabled', 'colspan', 'rowspan'],

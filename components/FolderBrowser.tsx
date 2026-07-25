@@ -1,13 +1,23 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from 'react';
 
+import {
+  createMatcher,
+  publishFolder,
+  type FuzzyField,
+  type PaletteFile,
+} from '@/lib/commands';
+import { CONTEXT_MENU_KEYS, FILTER_RESULT_LIMIT } from '@/lib/config';
+import type { CompareRequest } from '@/lib/diff';
 import {
   fileUrlFor,
   folderDocumentPath,
@@ -27,7 +37,20 @@ import {
   type FolderEntry,
 } from '@/lib/folder';
 
+import { FilterBox, useFuzzy } from './CommandPalette';
+
 import './folder-browser.css';
+
+/**
+ * What the filter box matches on.
+ *
+ * The path is weighted low but present: typing `guides` should surface the files
+ * under `docs/guides/`, and never above a file actually named that.
+ */
+const FILTER_FIELDS: readonly FuzzyField[] = [
+  { name: 'name', weight: 1 },
+  { name: 'path', weight: 0.4 },
+];
 
 /** What the tab strip is told, so it can say why the tab is empty. */
 export type FolderStatus = 'unsupported' | 'idle' | 'ready';
@@ -94,6 +117,7 @@ export function FolderBrowser({
   source,
   visible,
   onOpen,
+  onCompare,
   onStatusChange,
 }: {
   /** The document on screen — `location.href` or an `mdv-folder:` identity. */
@@ -106,6 +130,15 @@ export function FolderBrowser({
   /** Whether this panel is the one showing. Focus is only moved when it is. */
   visible: boolean;
   onOpen: (document: OpenedDocument) => void;
+  /**
+   * A file row asked for its menu, by right-click or from the keyboard.
+   *
+   * Reporting the request rather than acting on it: this component knows which
+   * file was pointed at and how to read it, and nothing else. Whoever owns the
+   * menu decides what may be done with it. Omitting the prop leaves the
+   * browser's own context menu untouched.
+   */
+  onCompare?: (request: CompareRequest) => void;
   onStatusChange: (status: FolderStatus) => void;
 }) {
   const supported = useMemo(isFolderBrowserSupported, []);
@@ -120,6 +153,10 @@ export function FolderBrowser({
   /** The folder's real `file://` address once proved, enabling real navigation. */
   const [base, setBase] = useState<string | null>(null);
   const [focusPath, setFocusPath] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
+
+  const fuse = useFuzzy();
+  const treeId = useId();
 
   // The source as the page loaded with it. Opening a file through a handle
   // replaces `source`, so the value the folder is verified against has to be
@@ -269,8 +306,70 @@ export function FolderBrowser({
     [root, onOpen],
   );
 
-  /** Every visible row, in the order they are painted. Drives keyboard movement. */
-  const rows = useMemo(() => flatten(listings, opened), [listings, opened]);
+  /* --- filtering ---------------------------------------------------------- */
+
+  /**
+   * Every markdown file read so far, flat.
+   *
+   * "So far" is the honest word: directories are read one expand at a time and
+   * that is deliberate, so the filter searches what has been opened rather than
+   * walking the disk behind the reader's back. The note under the results says
+   * so whenever anything is still unread — a filter that quietly searches half
+   * a folder is worse than one that says which half.
+   */
+  const knownFiles = useMemo(() => {
+    const files: { name: string; path: string; entry: FolderEntry }[] = [];
+    for (const listing of listings.values()) {
+      for (const entry of listing.entries) {
+        if (entry.kind === 'file') files.push({ name: entry.name, path: entry.path, entry });
+      }
+    }
+    return files.sort((a, b) => a.path.localeCompare(b.path));
+  }, [listings]);
+
+  /** True while any listed directory has not been expanded and read. */
+  const partiallyRead = useMemo(
+    () =>
+      [...listings.values()].some((listing) =>
+        listing.entries.some(
+          (entry) => entry.kind === 'directory' && !listings.has(entry.path),
+        ),
+      ),
+    [listings],
+  );
+
+  const filterMatch = useMemo(
+    () => createMatcher(knownFiles, FILTER_FIELDS, fuse, FILTER_RESULT_LIMIT),
+    [knownFiles, fuse],
+  );
+
+  /** Null while the box is empty, which is what selects the tree over the list. */
+  const matched = useMemo(() => {
+    const query = filter.trim();
+    if (query.length === 0) return null;
+    return filterMatch(query).map((result) => result.item);
+  }, [filterMatch, filter]);
+
+  /**
+   * Every visible row, in the order they are painted. Drives keyboard movement.
+   *
+   * Filtered results are rows of the same shape at depth zero, so arrow keys,
+   * the roving tabindex and `aria-posinset` all keep working across the switch
+   * without a second keyboard model to maintain.
+   */
+  const rows = useMemo(
+    () =>
+      matched === null
+        ? flatten(listings, opened)
+        : matched.map((file, index) => ({
+            entry: file.entry,
+            depth: 0,
+            expanded: false,
+            position: index + 1,
+            size: matched.length,
+          })),
+    [matched, listings, opened],
+  );
 
   /** Which file is on screen, however it got there. */
   const currentPath = useMemo(() => {
@@ -286,8 +385,115 @@ export function FolderBrowser({
       ?.focus();
   }, []);
 
+  /* --- what the command palette is told ----------------------------------- */
+
+  /** Opens a file by path, taking the real-navigation route when there is one. */
+  const openPath = useCallback(
+    (path: string) => {
+      const file = knownFiles.find((candidate) => candidate.path === path);
+      if (!file) return;
+
+      // The same choice a row makes: a proved `file://` address is an ordinary
+      // navigation, and everything else is read through the handle.
+      if (base) location.assign(fileUrlFor(base, path));
+      else void open(file.entry);
+    },
+    [knownFiles, base, open],
+  );
+
+  const paletteFiles = useMemo<PaletteFile[]>(
+    () =>
+      knownFiles.map((file) => ({
+        id: file.path,
+        name: file.name,
+        detail: parentOf(file.path) || (root?.name ?? ''),
+      })),
+    [knownFiles, root],
+  );
+
+  // The palette is a sibling of the sidebar, not a descendant of it, so what
+  // this component knows reaches it through the registry in lib/commands.ts
+  // rather than through two components whose only job would be forwarding it.
+  useEffect(() => {
+    publishFolder({
+      supported,
+      rootName: root?.name ?? null,
+      files: paletteFiles,
+      choose: () => void choose(),
+      open: openPath,
+    });
+  }, [supported, root, paletteFiles, choose, openPath]);
+
+  // Separately, and only on unmount: the registration is a live handle on a
+  // mounted component, and the palette must not be left holding one that is not.
+  useEffect(() => () => publishFolder(null), []);
+
+  /**
+   * Raises the menu for whichever file row an event landed on.
+   *
+   * Returns false — and does nothing — for a directory row, for the empty space
+   * around the tree, and when no owner is listening, which is what lets both
+   * callers below decide whether to take the event away from the browser.
+   */
+  const requestMenu = useCallback(
+    (target: EventTarget | null, anchor: { x: number; y: number } | null) => {
+      if (!onCompare) return false;
+
+      const element =
+        target instanceof HTMLElement
+          ? target.closest<HTMLElement>('[data-mdv-path]')
+          : null;
+      const row = rows.find((candidate) => candidate.entry.path === element?.dataset.mdvPath);
+      if (!row || row.entry.kind !== 'file') return false;
+
+      onCompare({
+        name: row.entry.name,
+        path: row.entry.path,
+        // A thunk, not the text: opening a menu must not read a file off disk.
+        read: () => readFileText(row.entry.handle as FileSystemFileHandle),
+        anchor,
+        origin: element,
+      });
+      return true;
+    },
+    [onCompare, rows],
+  );
+
+  /**
+   * The browser's own context menu is only suppressed over our own file rows.
+   *
+   * This tree is rendered inside a page the extension does not own, and taking
+   * away the right-click anywhere else — on the empty space below the rows, on
+   * a directory, on a selection — would be indistinguishable from a broken page.
+   */
+  const onContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (requestMenu(event.target, { x: event.clientX, y: event.clientY })) {
+      event.preventDefault();
+    }
+  };
+
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (rows.length === 0) return;
+
+    // The keyboard route to the same menu. Shift-F10 and the ContextMenu key
+    // are what the platform binds; `c` is the one that works on a Mac, which
+    // has neither. See CONTEXT_MENU_KEYS.
+    if (
+      CONTEXT_MENU_KEYS.includes(event.key) &&
+      (event.key !== 'F10' || event.shiftKey) &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      const element = event.target instanceof HTMLElement ? event.target : null;
+      const box = element?.getBoundingClientRect();
+      // Anchored to the row rather than to a pointer that was never used, so
+      // the menu opens where the focus ring already is.
+      if (requestMenu(element, box ? { x: box.left + 16, y: box.bottom } : null)) {
+        event.preventDefault();
+        return;
+      }
+    }
 
     // Where the keystroke actually landed, not where state last recorded it.
     // A keydown arriving in the same task as the focus that preceded it would
@@ -442,12 +648,27 @@ export function FolderBrowser({
         </p>
       ) : null}
 
+      <FilterBox
+        value={filter}
+        onChange={setFilter}
+        label="Filter files"
+        placeholder="Filter files"
+        count={matched?.length ?? null}
+        controls={treeId}
+      />
+
       <div
+        id={treeId}
         className="mdv-side-scroll"
         ref={treeRef}
         role="tree"
-        aria-label={`Markdown files in ${root.name}`}
+        aria-label={
+          matched === null
+            ? `Markdown files in ${root.name}`
+            : `Markdown files in ${root.name} matching ${filter.trim()}`
+        }
         onKeyDown={onKeyDown}
+        onContextMenu={onContextMenu}
       >
         {rows.map((row) => (
           <TreeRow
@@ -464,8 +685,21 @@ export function FolderBrowser({
           />
         ))}
 
-        {rootListing && rootListing.entries.length === 0 ? (
+        {matched?.length === 0 ? (
+          <p className="mdv-side-empty">No files match that.</p>
+        ) : null}
+
+        {matched === null && rootListing && rootListing.entries.length === 0 ? (
           <p className="mdv-side-empty">No markdown files in this folder.</p>
+        ) : null}
+
+        {/* Said whenever it is true, not only when nothing was found: a filter
+            that searched half the folder and found something is exactly the
+            case where a reader would otherwise stop looking. */}
+        {matched !== null && partiallyRead ? (
+          <p className="mdv-folder-note">
+            Only folders you have opened are searched. Expand one to include it.
+          </p>
         ) : null}
 
         {[...listings].some(([, listing]) => listing.truncated) ? (
@@ -550,6 +784,12 @@ function TreeRow({
       {label}
     </button>
   );
+}
+
+/** The directory part of a path, or '' for a file at the root. */
+function parentOf(path: string): string {
+  const at = path.lastIndexOf('/');
+  return at < 0 ? '' : path.slice(0, at);
 }
 
 /**

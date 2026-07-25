@@ -35,6 +35,21 @@ const INERT_URLS = [
     'markdown-it-anchor deprecation message for its legacy permalink option',
   ],
   ['https://en.wikipedia.org/', 'left-recursion explanation in a langium grammar error'],
+  [
+    'http://schemas.openxmlformats.org/',
+    'OOXML namespace and relationship-type constants written into the .docx package',
+  ],
+  [
+    'http://schemas.microsoft.com/office/',
+    'Word/Office extension namespaces docx declares on the document root',
+  ],
+  ['http://purl.org/dc/', 'Dublin Core namespaces in the .docx core-properties part'],
+  ['https://answers.microsoft.com/', "docx error message about Word's nine list levels"],
+  ['https://stuk.github.io/jszip/', 'JSZip error message text'],
+  [
+    'https://rolldown.rs/',
+    "the bundler's CJS-interop error string for an unresolved require; no node builtins are required, so it is unreachable",
+  ],
 ];
 
 /**

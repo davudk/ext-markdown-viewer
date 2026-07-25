@@ -10,6 +10,7 @@ import {
 
 import {
   DEFAULT_SIDEBAR_TAB,
+  SEARCH_ALL_KEY,
   SIDEBAR_TABS,
   type SidebarTabId,
 } from '@/lib/config';
@@ -18,6 +19,7 @@ import type { Heading } from '@/lib/markdown';
 import { loadSidebarTab, saveSidebarTab } from '@/lib/settings';
 
 import { FolderBrowser, type FolderStatus, type OpenedDocument } from './FolderBrowser';
+import { SearchPanel } from './SearchPanel';
 import { Toc } from './Toc';
 
 import './sidebar.css';
@@ -45,6 +47,14 @@ interface PanelContext {
   folder: FolderStatus;
   /** How the Files panel reports back what it found. */
   setFolder: (status: FolderStatus) => void;
+  /**
+   * Bumped when a tab was opened by its own shortcut, which is the only moment
+   * a panel may take focus. Clicking a tab, or arrowing across the strip, must
+   * leave focus on the button the reader is standing on.
+   */
+  focusToken: number;
+  /** Back to whichever tab was showing before a shortcut took over. */
+  dismiss: () => void;
 }
 
 interface PanelDefinition {
@@ -53,14 +63,26 @@ interface PanelDefinition {
   hint: (context: PanelContext) => string | null;
   /** True when the tab cannot work in this browser at all, so never restore onto it. */
   blocked?: (context: PanelContext) => boolean;
+  /**
+   * A chord that opens this tab from anywhere in the document.
+   *
+   * Declared per panel rather than in one switch below, so the key a tab answers
+   * to is written next to the tab — and so `dismiss` and `focusToken` are wired
+   * once for every tab that ever wants them rather than once per tab.
+   */
+  shortcut?: (event: KeyboardEvent) => boolean;
 }
 
 /**
  * Every tab, keyed by the ids `SIDEBAR_TABS` declares.
  *
- * A third tab — Search — is planned, and this is the shape that makes it an
- * entry rather than a rewrite: one line in `SIDEBAR_TABS` for the label and one
- * here for the contents. Nothing below this object knows how many tabs exist.
+ * The claim this object was built to make: adding a tab is one line in
+ * `SIDEBAR_TABS` for the label and one entry here for the contents. Search was
+ * the test of it, and it held — the shortcut, the previous-tab restore and the
+ * focus handshake are all declared here too, but they are optional fields the
+ * next tab inherits for free rather than special cases in the shell.
+ *
+ * Nothing below this object knows how many tabs exist.
  */
 const PANELS: Record<SidebarTabId, PanelDefinition> = {
   outline: {
@@ -84,6 +106,29 @@ const PANELS: Record<SidebarTabId, PanelDefinition> = {
       return null;
     },
     blocked: ({ folder }) => folder === 'unsupported',
+  },
+  search: {
+    render: (props, visible, context) => (
+      <SearchPanel
+        source={props.source}
+        headings={props.headings}
+        visible={visible}
+        folderStatus={context.folder}
+        focusToken={context.focusToken}
+        onClose={context.dismiss}
+        onOpenDocument={props.onOpenDocument}
+      />
+    ),
+    // Never empty: with no document and no folder it is still a field waiting
+    // for a query, which is the whole tab.
+    hint: () => null,
+    // Shift is what separates this from quick find, which owns the unshifted
+    // chord and is a different feature rather than a smaller version of this one.
+    shortcut: (event) =>
+      (event.ctrlKey || event.metaKey) &&
+      event.shiftKey &&
+      !event.altKey &&
+      event.key.toLowerCase() === SEARCH_ALL_KEY,
   },
 };
 
@@ -115,12 +160,94 @@ export function Sidebar(props: SidebarProps) {
 
   const buttonsRef = useRef(new Map<SidebarTabId, HTMLButtonElement>());
 
-  const context: PanelContext = { headings: props.headings, folder, setFolder };
+  /** The tab a shortcut interrupted, and where focus was when it did. */
+  const previousRef = useRef<SidebarTabId | null>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+  /** `tab`, readable from the window listener, which is bound once. */
+  const tabRef = useRef(tab);
+  useEffect(() => {
+    tabRef.current = tab;
+  });
+
+  const [focusToken, setFocusToken] = useState(0);
 
   const select = useCallback((next: SidebarTabId) => {
     setTab(next);
     void saveSidebarTab(next);
   }, []);
+
+  /**
+   * Undo whatever a shortcut did: the tab that was showing comes back, and focus
+   * goes where it was. Both are needed — restoring the tab and leaving focus in
+   * a panel that is now hidden strands the reader's cursor off screen.
+   *
+   * Falls back to closing nothing when the tab was reached by clicking, because
+   * there is then no "before" to return to and Escape should not move anything.
+   */
+  const dismiss = useCallback(() => {
+    const back = previousRef.current;
+    previousRef.current = null;
+    if (back) select(back);
+
+    const restore = restoreRef.current;
+    restoreRef.current = null;
+    if (restore?.isConnected) restore.focus();
+  }, [select]);
+
+  const context: PanelContext = {
+    headings: props.headings,
+    folder,
+    setFolder,
+    focusToken,
+    dismiss,
+  };
+
+  /**
+   * Picking a tab by hand, as opposed to a shortcut opening one.
+   *
+   * The difference is the whole reason both exist: a shortcut is an interruption
+   * and has somewhere to go back to, a click is a decision and does not. Clearing
+   * the two refs here is what stops Escape, pressed ten minutes later, from
+   * yanking the sidebar back to a tab the reader deliberately left.
+   */
+  const choose = useCallback(
+    (next: SidebarTabId) => {
+      previousRef.current = null;
+      restoreRef.current = null;
+      select(next);
+    },
+    [select],
+  );
+
+  // One listener for every tab that declares a chord. Bound once and reading the
+  // current tab from a ref, so adding a shortcut is an entry in PANELS and
+  // nothing here.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return;
+
+      for (const { id } of SIDEBAR_TABS) {
+        if (!PANELS[id].shortcut?.(event)) continue;
+
+        event.preventDefault();
+        if (tabRef.current !== id) {
+          previousRef.current = tabRef.current;
+          const active = document.activeElement;
+          restoreRef.current = active instanceof HTMLElement ? active : null;
+          select(id);
+        }
+
+        // The sidebar may be collapsed to its rail, in which case the panel is
+        // rendered but `hidden`, and focusing into it would be focusing nothing.
+        setExpanded(true);
+        setFocusToken((count) => count + 1);
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [select]);
 
   // Restore where the reader left the sidebar. Not through the settings object:
   // this is UI state, and it arrives a tick after the first paint on purpose —
@@ -132,7 +259,7 @@ export function Sidebar(props: SidebarProps) {
       // A remembered tab that cannot work in this browser is not worth landing
       // on; one that is merely empty still is, because that is where the button
       // to fill it lives.
-      const blocked = PANELS[stored].blocked?.({ headings: props.headings, folder, setFolder });
+      const blocked = PANELS[stored].blocked?.({ ...context, headings: props.headings });
       setTab(blocked ? DEFAULT_SIDEBAR_TAB : stored);
     });
     return () => {
@@ -156,7 +283,7 @@ export function Sidebar(props: SidebarProps) {
     const to = (index: number) => {
       event.preventDefault();
       const next = order[(index + order.length) % order.length];
-      select(next);
+      choose(next);
       buttonsRef.current.get(next)?.focus();
     };
 
@@ -219,7 +346,7 @@ export function Sidebar(props: SidebarProps) {
                     buttonsRef.current.delete(id);
                   };
                 }}
-                onClick={() => select(id)}
+                onClick={() => choose(id)}
               >
                 {label}
               </button>

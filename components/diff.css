@@ -1,0 +1,457 @@
+/* Markdown Viewer — document comparison.
+
+   Two surfaces are styled here: the little menu a folder row raises, and the
+   full-screen overlay the comparison itself lives in.
+
+   Both are portalled onto <body>, which puts them *outside* `#mdv-root`.
+   Several rules in entrypoints/viewer.css are scoped to that root — the
+   box-sizing reset, the focus ring, the reduced-motion override, the print
+   strip — and none of them reach a portal. Each one is restated at the bottom
+   of this file rather than assumed.
+
+   Every colour is a `--mdv-*` token, so both themes are covered without a
+   single media query. */
+
+/* ==========================================================================
+   1. The row menu
+
+   Fixed rather than absolute: it is positioned from viewport coordinates —
+   either the pointer's, or the row's bounding box — and an absolutely
+   positioned popup would be offset by however far the page had scrolled.
+   ========================================================================== */
+
+.mdv-diff-menu {
+  position: fixed;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  min-width: 12rem;
+  max-width: min(20rem, calc(100vw - 1rem));
+  padding: 0.25rem;
+
+  font-family: var(--mdv-font-sans);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--mdv-fg);
+
+  background-color: var(--mdv-surface);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 22%);
+}
+
+.mdv-diff-menu *,
+.mdv-diff-menu *::before,
+.mdv-diff-menu *::after {
+  box-sizing: border-box;
+}
+
+.mdv-diff-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: var(--mdv-radius-sm);
+}
+
+.mdv-diff-menu-item:hover {
+  background-color: color-mix(in srgb, var(--mdv-accent) 14%, transparent);
+}
+
+/* ==========================================================================
+   2. Overlay shell
+   ========================================================================== */
+
+.mdv-diff {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+  box-sizing: border-box;
+
+  /* `--mdv-font-body` is written inline on `.mdv` and is therefore invisible
+     out here; the root token is the right fallback anyway, since this is
+     chrome rather than document text. */
+  font-family: var(--mdv-font-sans);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--mdv-fg);
+  background-color: var(--mdv-bg);
+}
+
+.mdv-diff *,
+.mdv-diff *::before,
+.mdv-diff *::after {
+  box-sizing: border-box;
+}
+
+/* The `#mdv-root :focus-visible` rule in viewer.css cannot see this subtree. */
+.mdv-diff :focus-visible,
+.mdv-diff-menu :focus-visible {
+  outline: 2px solid var(--mdv-accent);
+  outline-offset: 2px;
+  border-radius: var(--mdv-radius-sm);
+}
+
+.mdv-diff-dialog {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  /* Both are what let the scroller shrink instead of pushing the header off
+     the top of a flex column. */
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ==========================================================================
+   3. Header
+   ========================================================================== */
+
+.mdv-diff-bar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.45rem 0.7rem;
+  background-color: var(--mdv-surface);
+  border-bottom: 1px solid var(--mdv-border);
+}
+
+.mdv-diff-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.mdv-diff-name {
+  overflow: hidden;
+  max-width: 18ch;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--mdv-radius-sm);
+}
+
+/* Tinted the same way the rows are, so the header says which side is which
+   without the reader having to remember an order. */
+.mdv-diff-name[data-side='before'] {
+  background-color: var(--mdv-tk-deletion-bg);
+  color: var(--mdv-tk-deletion);
+}
+
+.mdv-diff-name[data-side='after'] {
+  background-color: var(--mdv-tk-addition-bg);
+  color: var(--mdv-tk-addition);
+}
+
+.mdv-diff-stats {
+  margin: 0;
+  /* Pushes the actions to the far end without a spacer element. */
+  margin-right: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-diff-added {
+  color: var(--mdv-tk-addition);
+  font-weight: 600;
+}
+
+.mdv-diff-removed {
+  color: var(--mdv-tk-deletion);
+  font-weight: 600;
+}
+
+.mdv-diff-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.mdv-diff-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  color: var(--mdv-fg);
+  cursor: pointer;
+  background-color: var(--mdv-bg);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-sm);
+  transition: background-color var(--mdv-dur) ease;
+}
+
+.mdv-diff-tool:hover:not(:disabled) {
+  background-color: var(--mdv-surface-alt);
+  border-color: var(--mdv-border-strong);
+}
+
+.mdv-diff-tool:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.mdv-diff-choice {
+  display: inline-flex;
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-sm);
+  overflow: hidden;
+}
+
+.mdv-diff-chip {
+  padding: 0.25rem 0.55rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--mdv-fg);
+  cursor: pointer;
+  background-color: var(--mdv-bg);
+  border: 0;
+}
+
+.mdv-diff-chip + .mdv-diff-chip {
+  border-left: 1px solid var(--mdv-border);
+}
+
+.mdv-diff-chip[aria-pressed='true'] {
+  color: var(--mdv-on-accent);
+  background-color: var(--mdv-accent);
+}
+
+.mdv-diff-chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ==========================================================================
+   4. The scroller and its notices
+   ========================================================================== */
+
+.mdv-diff-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-color: var(--mdv-scrollbar) transparent;
+}
+
+.mdv-diff-note {
+  margin: 0;
+  padding: 1.5rem;
+  color: var(--mdv-fg-muted);
+  text-align: center;
+}
+
+.mdv-diff-problem {
+  margin: 0 0 0.75rem;
+  color: var(--mdv-tk-deletion);
+}
+
+.mdv-diff-retry {
+  padding: 0.3rem 0.8rem;
+  font: inherit;
+  color: var(--mdv-fg);
+  cursor: pointer;
+  background-color: var(--mdv-surface);
+  border: 1px solid var(--mdv-border-strong);
+  border-radius: var(--mdv-radius-sm);
+}
+
+/* ==========================================================================
+   5. Rows
+
+   `table-layout: fixed` is doing real work: without it the browser measures
+   every cell in a ten-thousand-row table before painting anything, and one
+   long line in one row would then set the width of the whole column.
+   ========================================================================== */
+
+.mdv-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.mdv-diff-col-num {
+  width: 4.5ch;
+}
+
+.mdv-diff-row {
+  vertical-align: top;
+}
+
+.mdv-diff-num {
+  padding: 0 0.5rem;
+  font-family: var(--mdv-font-mono);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  text-align: right;
+  color: var(--mdv-fg-muted);
+  background-color: var(--mdv-surface-alt);
+  border-right: 1px solid var(--mdv-border);
+  /* A diff is copied constantly, and line numbers in the clipboard are noise. */
+  user-select: none;
+}
+
+.mdv-diff-cell {
+  padding: 0 0.5rem;
+  /* The one place a wrap is allowed: a 400-character line must not force the
+     whole overlay to scroll sideways. */
+  overflow-wrap: anywhere;
+}
+
+.mdv-diff-cell[data-side='before'] {
+  border-right: 1px solid var(--mdv-border);
+}
+
+.mdv-diff-code {
+  display: block;
+  font-family: var(--mdv-font-mono);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  tab-size: 4;
+}
+
+/* The marker column of a unified diff. Colour is never the only signal. */
+.mdv-diff-cell[data-marker]::before {
+  content: attr(data-marker) ' ';
+  color: var(--mdv-fg-muted);
+  user-select: none;
+}
+
+.mdv-diff-row[data-kind='removed'] .mdv-diff-cell:not([data-empty]),
+.mdv-diff-row[data-kind='changed'] .mdv-diff-cell[data-side='before'] {
+  background-color: var(--mdv-tk-deletion-bg);
+}
+
+.mdv-diff-row[data-kind='added'] .mdv-diff-cell:not([data-empty]),
+.mdv-diff-row[data-kind='changed'] .mdv-diff-cell[data-side='after'] {
+  background-color: var(--mdv-tk-addition-bg);
+}
+
+/* The half of a split row with nothing opposite it. Hatched rather than left
+   blank, so an absence reads as "there is nothing here" instead of as a row
+   that failed to render. */
+.mdv-diff-cell[data-empty] {
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--mdv-border) 45%, transparent) 6px 7px
+  );
+}
+
+.mdv-diff-gap {
+  padding: 0;
+  background-color: var(--mdv-surface-alt);
+  border-block: 1px solid var(--mdv-border);
+}
+
+.mdv-diff-expand {
+  display: block;
+  width: 100%;
+  padding: 0.2rem 0.6rem;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--mdv-fg-muted);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.mdv-diff-expand:hover {
+  color: var(--mdv-accent);
+}
+
+/* ==========================================================================
+   6. Rendered panes
+
+   The blocks are real document markup, dropped into a table cell that inherits
+   none of `.mdv-body`'s typography. Only the handful of rules that stop it
+   looking like unstyled HTML are restated; everything structural is left to
+   the browser, because this is a comparison view and not a second reader.
+   ========================================================================== */
+
+.mdv-diff-rendered {
+  font-family: var(--mdv-font-body, var(--mdv-font-sans));
+  font-size: 0.9rem;
+  padding: 0.15rem 0;
+}
+
+.mdv-diff-rendered > :first-child {
+  margin-top: 0;
+}
+
+.mdv-diff-rendered > :last-child {
+  margin-bottom: 0;
+}
+
+.mdv-diff-rendered img {
+  max-width: 100%;
+  height: auto;
+}
+
+.mdv-diff-rendered pre {
+  overflow-x: auto;
+  padding: 0.5rem;
+  font-family: var(--mdv-font-mono);
+  font-size: 0.8rem;
+  background-color: var(--mdv-surface);
+  border-radius: var(--mdv-radius-sm);
+}
+
+.mdv-diff-rendered table {
+  border-collapse: collapse;
+}
+
+.mdv-diff-rendered :is(th, td) {
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--mdv-border);
+}
+
+/* ==========================================================================
+   7. Narrow windows, motion and print
+
+   The last two exist because their counterparts in viewer.css are scoped to
+   `#mdv-root` and both surfaces here are portalled outside it. The attribute
+   is still set on each root element so the intent stays greppable, and so
+   nothing breaks if either ever moves back inside the shell.
+   ========================================================================== */
+
+@media (max-width: 40rem) {
+  .mdv-diff-bar {
+    padding: 0.4rem 0.5rem;
+  }
+
+  .mdv-diff-name {
+    max-width: 10ch;
+  }
+
+  /* Split needs four columns of readable text and there is not room for them.
+     The layout control stays available; this only changes what fits. */
+  .mdv-diff-table[data-layout='split'] .mdv-diff-col-num {
+    width: 3ch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-diff-tool {
+    transition: none;
+  }
+}
+
+@media print {
+  .mdv-diff,
+  .mdv-diff-menu {
+    display: none !important;
+  }
+}

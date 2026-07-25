@@ -308,3 +308,22 @@ export async function clearAllScrollPositions(): Promise<void> {
 export async function countRememberedDocuments(): Promise<number> {
   return Object.keys(await readAll()).length;
 }
+
+/**
+ * Remembered documents, most recently used first.
+ *
+ * This map is already a recency-ordered list of every document the reader has
+ * opened — that is what `usedAt` is for and what eviction is measured against —
+ * so "recent files" in the command palette is a read of it rather than a second
+ * list kept alongside. No title is stored, deliberately: a document's title is
+ * its first heading, which would mean parsing every remembered file to build a
+ * menu. The caller has the URL and can name it from that.
+ */
+export async function listRecentDocuments(): Promise<
+  { url: string; usedAt: number }[]
+> {
+  const states = await readAll();
+  return Object.entries(states)
+    .map(([url, entry]) => ({ url, usedAt: entry.usedAt }))
+    .sort((a, b) => b.usedAt - a.usedAt);
+}

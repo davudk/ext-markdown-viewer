@@ -1,0 +1,342 @@
+/* Markdown Viewer — the sidebar's Search tab.
+
+   The quick-find bar (search.css) and this panel are two answers to two
+   questions, and they look different on purpose: that one is a floating card
+   over the document with a cursor you advance, this one is a column of results
+   you read. What they share is the token set — every colour here is a --mdv-*
+   from viewer.css, so the panel follows `data-mdv-theme` on <html> with no
+   palette of its own and no prefers-color-scheme query.
+
+   Like the rest of the sidebar this is chrome: the UI stack at a fixed size,
+   never the reader's document typography, because a 22px serif result list is a
+   worse index than a small sans one.
+
+   Selectors are a class heavier than they need to be, for the same reason as
+   document.css — this file and viewer.css reach the page by different routes, so
+   nothing here may depend on winning a tie. */
+
+/* ==========================================================================
+   1. The jump highlight
+
+   Opening a result paints one range in the document with the Custom Highlight
+   API. Nothing is marked up: the body is injected HTML that other components
+   have grafted controls onto, and a <mark> wrapped round a match would split
+   text nodes inside it. A Range owns nothing, so the flash undoes by being
+   deleted from the registry.
+
+   Only a short list of properties is honoured inside ::highlight() — colour,
+   background-color, text-decoration and text-shadow — so there is deliberately
+   no outline, padding or radius here to be silently dropped.
+   ========================================================================== */
+
+.mdv-body ::highlight(mdv-search-jump) {
+  background-color: var(--mdv-accent);
+  color: var(--mdv-on-accent);
+}
+
+/* ==========================================================================
+   2. Panel frame
+   ========================================================================== */
+
+.mdv-find {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.mdv-find-head {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: none;
+  margin: 0.4rem 0.45rem 0.3rem;
+  padding: 0.15rem 0.2rem;
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-sm);
+  background-color: var(--mdv-bg);
+}
+
+.mdv-find-head:focus-within {
+  border-color: var(--mdv-accent);
+  box-shadow: inset 0 0 0 1px var(--mdv-accent);
+}
+
+.mdv-find-field {
+  font: inherit;
+  flex: 1 1 auto;
+  /* Without this the flex item refuses to shrink below the input's intrinsic
+     size and the option buttons are pushed out of the sidebar entirely. */
+  min-width: 0;
+  margin: 0;
+  padding: 0.3rem 0.35rem;
+  border: 0;
+  background: none;
+  color: var(--mdv-fg);
+}
+
+.mdv-find-field::placeholder {
+  color: var(--mdv-fg-muted);
+}
+
+/* The row carries the focus ring for the whole control; a second one on the
+   field itself would sit inside it a pixel away. */
+.mdv-find-field:focus {
+  outline: none;
+}
+
+/* ==========================================================================
+   3. Options — Aa, ab|, .*
+   ========================================================================== */
+
+.mdv-find-options {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  flex: none;
+}
+
+.mdv-find-toggle {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  margin: 0;
+  padding-inline: 0.25rem;
+  border: 0;
+  border-radius: var(--mdv-radius-sm);
+  background: none;
+  color: var(--mdv-fg-muted);
+  font-size: 0.7rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background-color var(--mdv-dur) ease, color var(--mdv-dur) ease;
+}
+
+.mdv-find-toggle:hover {
+  background-color: var(--mdv-surface);
+  color: var(--mdv-fg);
+}
+
+.mdv-find-toggle[aria-pressed='true'] {
+  background-color: var(--mdv-accent);
+  color: var(--mdv-on-accent);
+}
+
+/* ==========================================================================
+   4. Scope, errors and the count
+   ========================================================================== */
+
+.mdv-find-scope {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: none;
+  margin: 0 0.65rem 0.2rem;
+  color: var(--mdv-fg-muted);
+  cursor: pointer;
+}
+
+/* A folder that is not open is a fact about the browser session, not a
+   deactivated control — it still has to be readable enough to explain itself
+   through its title. */
+.mdv-find-scope:has(input:disabled) {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.mdv-find-scope input {
+  flex: none;
+  margin: 0;
+  accent-color: var(--mdv-accent);
+}
+
+.mdv-find-error {
+  flex: none;
+  margin: 0.15rem 0.65rem 0.3rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: var(--mdv-radius-sm);
+  background-color: var(--mdv-tk-deletion-bg);
+  color: var(--mdv-tk-deletion);
+  /* An engine message can be a single unbroken token; it must not push the
+     sidebar's own scroller sideways. */
+  overflow-wrap: anywhere;
+}
+
+.mdv-find-summary {
+  flex: none;
+  margin: 0 0.65rem 0.25rem;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--mdv-fg-muted);
+}
+
+/* ==========================================================================
+   5. Results
+
+   A file is a row that collapses; a match is a row under it. Both are real
+   buttons carrying `role="treeitem"`, so the tree is operable from the keyboard
+   with nothing but a roving tabindex and the container's keydown handler.
+   ========================================================================== */
+
+.mdv-find-results {
+  padding-top: 0.15rem;
+}
+
+.mdv-find-group {
+  margin-bottom: 0.15rem;
+}
+
+.mdv-find-file,
+.mdv-find-hit {
+  font: inherit;
+  display: flex;
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: var(--mdv-radius-sm);
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mdv-find-file {
+  align-items: center;
+  gap: 0.3rem;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.25rem 0.35rem;
+  background-color: var(--mdv-surface-alt);
+  color: var(--mdv-fg);
+  font-weight: 600;
+}
+
+.mdv-find-file:hover {
+  background-color: var(--mdv-surface);
+}
+
+.mdv-find-caret {
+  flex: none;
+  color: var(--mdv-fg-muted);
+  transform: rotate(var(--mdv-caret, 0deg));
+  transition: transform var(--mdv-dur) ease;
+}
+
+.mdv-find-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  /* The interesting end of a path is the basename, so the ellipsis goes at the
+     front rather than eating the filename. */
+  direction: rtl;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  unicode-bidi: plaintext;
+}
+
+.mdv-find-file-count {
+  flex: none;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background-color: var(--mdv-surface);
+  color: var(--mdv-fg-muted);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.mdv-find-hits {
+  display: flex;
+  flex-direction: column;
+}
+
+.mdv-find-hit {
+  flex-direction: column;
+  gap: 0.05rem;
+  padding: 0.25rem 0.4rem 0.25rem 1.1rem;
+  border-left: 2px solid transparent;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-find-hit:hover {
+  background-color: var(--mdv-bg);
+  color: var(--mdv-fg);
+}
+
+.mdv-find-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.6875rem;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-find-trail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdv-find-line {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+/* One line per result: a wrapped snippet turns the list into a wall of prose and
+   costs the scan speed the list exists for. */
+.mdv-find-text {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mdv-font-mono);
+  font-size: 0.75rem;
+}
+
+.mdv-find-mark {
+  border-radius: var(--mdv-radius-sm);
+  padding: 0 0.1em;
+  background-color: var(--mdv-mark-bg);
+  color: var(--mdv-fg);
+  font-weight: 650;
+}
+
+.mdv-find-note {
+  margin: 0.4rem 0.25rem 0;
+  padding: 0.3rem 0.4rem;
+  border-top: 1px solid var(--mdv-border);
+  font-size: 0.7rem;
+  color: var(--mdv-fg-muted);
+  text-wrap: pretty;
+}
+
+/* Announced, never seen — the visible summary says the same thing without
+   interrupting anyone. */
+.mdv-find-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-find-toggle,
+  .mdv-find-caret {
+    transition: none;
+  }
+}

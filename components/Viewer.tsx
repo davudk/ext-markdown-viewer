@@ -11,7 +11,9 @@ import { renderMarkdown } from '@/lib/markdown';
 import { onSettingsChanged, saveSettings, type Settings } from '@/lib/settings';
 import { applyDocumentTheme, loadDocumentTheme } from '@/lib/theme-presets';
 
+import { CommandPalette } from './CommandPalette';
 import { Document } from './Document';
+import { ExportMenu } from './ExportMenu';
 import type { OpenedDocument } from './FolderBrowser';
 import { HeadingFold } from './HeadingFold';
 import { Lightbox } from './Lightbox';
@@ -142,6 +144,20 @@ export function Viewer({
           fixed-position or portalled, so none of them becomes a second column.
           They take `html` as a staleness signal and read the live body. */}
       {showRaw ? null : <Search headings={doc.headings} />}
+      {/* Safe to mount unconditionally: it imports the export machinery with
+          `import type` only and asks the service worker to inject the add-on on
+          first use, so nothing here costs a plain README any bytes. */}
+      {showRaw ? null : (
+        <ExportMenu
+          url={url}
+          typography={{
+            fontFamily: settings.fontFamily,
+            fontSize: settings.fontSize,
+            lineHeight: settings.lineHeight,
+            contentWidth: settings.contentWidth,
+          }}
+        />
+      )}
       <Lightbox enabled={settings.lightbox && !showRaw} />
       <HeadingFold html={doc.html} enabled={settings.headingFold && !showRaw} />
       <ReadingStatus
@@ -149,6 +165,18 @@ export function Viewer({
         stats={settings.readingStats && !showRaw}
         progress={settings.readingProgress && !showRaw}
       />
+      {/* Not gated on `showRaw`: the palette is how a reader gets back out of
+          the raw view. Export and compare rows are absent until the shell can
+          supply their handlers — the palette drops a row rather than listing an
+          action that would do nothing. */}
+      <CommandPalette
+        headings={doc.headings}
+        settings={settings}
+        documentUrl={url}
+        showRaw={showRaw}
+        onToggleRaw={() => setShowRaw((raw) => !raw)}
+      />
+
       <Presentation
         html={doc.html}
         split={settings.slideSplit}

@@ -42,6 +42,9 @@ import {
   KATEX_OPTIONS,
   MARKDOWN_EXTENSIONS,
   MARKDOWN_IT_OPTIONS,
+  MATH_DISPLAY_CLASS,
+  MATH_INLINE_CLASS,
+  MATH_PLACEHOLDER_CLASS,
   MERMAID_LANGUAGE,
   MULTIMD_TABLE_OPTIONS,
   PURIFY_CONFIG,
@@ -224,6 +227,56 @@ function refuseMathAcrossCodeSpans(state: StateInline, silent: boolean): boolean
   if (!silent) state.pending += '$';
   state.pos += 1;
   return true;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Math is tokenized here and rendered elsewhere                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Tokenizing and rendering are different stages, and only the first one has to
+ * happen during the parse.
+ *
+ * The plugin's tokenizer stays exactly where it was — it is the only stage that
+ * can tell `$x$` from `` `$x$` ``, and `refuseMathAcrossCodeSpans` above is
+ * built on top of it. What is replaced is the four *renderer* rules, each of
+ * which called `katex.renderToString` and so dragged the whole of KaTeX into
+ * every document, math or not. They emit a placeholder carrying the TeX
+ * instead, and `entrypoints/katex-addon.ts` renders those once it is injected.
+ *
+ * The TeX is the element's text rather than an attribute (see
+ * MATH_PLACEHOLDER_CLASS in config.ts), which also settles what happens when
+ * the add-on never arrives: the formula reads as its own source, which is
+ * degraded but never blank.
+ */
+function mathPlaceholder(tex: string, display: boolean): string {
+  const kind = display ? MATH_DISPLAY_CLASS : MATH_INLINE_CLASS;
+  return `<span class="${MATH_PLACEHOLDER_CLASS} ${kind}">${escapeHtml(tex)}</span>`;
+}
+
+/** `$`1+1`$` — the plugin accepts a backticked body, so the TeX excludes them. */
+function mathContent(raw: string): string {
+  return raw.length > 2 && raw.startsWith('`') && raw.endsWith('`')
+    ? raw.slice(1, -1)
+    : raw;
+}
+
+function deferMathRendering(md: MarkdownIt): void {
+  const inline = (tokens: Token[], index: number) =>
+    mathPlaceholder(mathContent(tokens[index].content), false);
+
+  // A trailing newline, as the plugin's own block renderer emits: without it
+  // two consecutive display formulae run together in the HTML source.
+  const display = (tokens: Token[], index: number) =>
+    `${mathPlaceholder(tokens[index].content, true)}\n`;
+
+  md.renderer.rules.math_inline = inline;
+  md.renderer.rules.math_block = display;
+  // `$$…$$` written mid-paragraph, and the bare `\begin{}` form. The latter is
+  // switched off in KATEX_OPTIONS and mints no token today; overriding it anyway
+  // means turning it on cannot quietly put KaTeX back into the parse.
+  md.renderer.rules.math_inline_block = display;
+  md.renderer.rules.math_inline_bare_block = display;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -421,6 +474,8 @@ function createParser(): MarkdownIt {
       icons: ALERT_ICONS,
     })
     .use(katexPlugin, KATEX_OPTIONS);
+
+  deferMathRendering(md);
 
   for (const { name, title, kind } of CONTAINER_TYPES) {
     md.use(container, name, {

@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEvent } from 'react';
 
+import { createMatcher, type FuzzyField } from '@/lib/commands';
+import { FILTER_RESULT_LIMIT } from '@/lib/config';
 import type { Heading } from '@/lib/markdown';
+
+import { FilterBox, useFuzzy } from './CommandPalette';
 
 import './toc.css';
 
@@ -33,6 +37,15 @@ interface TocNode {
 }
 
 /**
+ * What the filter box matches on.
+ *
+ * The heading text and nothing else. A level is not something anyone types, and
+ * the ancestor path is deliberately absent: matching a parent's name would
+ * return every heading under it, which is the opposite of narrowing.
+ */
+const FILTER_FIELDS: readonly FuzzyField[] = [{ name: 'title', weight: 1 }];
+
+/**
  * The outline panel: the document's headings, scroll-spy, and jump-to-heading.
  *
  * A panel rather than a sidebar — `Sidebar.tsx` owns the `<nav>`, the collapse
@@ -59,10 +72,39 @@ export function Toc({
 
   const tree = useMemo(() => buildTree(headings), [headings]);
 
+  const [filter, setFilter] = useState('');
+  const fuse = useFuzzy();
+  const listId = useId();
+
   const scrollerRef = useRef<HTMLDivElement>(null);
   const linksRef = useRef(new Map<string, HTMLAnchorElement>());
   // Timestamp until which the outline is the reader's to scroll, not ours.
   const quietUntilRef = useRef(0);
+
+  /**
+   * Matching runs over a flat projection, and a match returns the heading.
+   *
+   * Flat rather than over the tree because a filtered outline is not an outline:
+   * showing an `h3` under an `h2` that did not match would be showing a row
+   * nobody asked for, and hiding it would make the match unreachable. The tree
+   * comes back the moment the box is empty.
+   */
+  const searchable = useMemo(
+    () => headings.map((heading) => ({ title: heading.text, heading })),
+    [headings],
+  );
+
+  const match = useMemo(
+    () => createMatcher(searchable, FILTER_FIELDS, fuse, FILTER_RESULT_LIMIT),
+    [searchable, fuse],
+  );
+
+  /** Null while the box is empty, which is what selects the tree over the list. */
+  const matched = useMemo(() => {
+    const query = filter.trim();
+    if (query.length === 0) return null;
+    return match(query).map((result) => result.item.heading);
+  }, [match, filter]);
 
   const hush = useCallback(() => {
     quietUntilRef.current = Date.now() + QUIET_MS;
@@ -76,6 +118,10 @@ export function Toc({
     const link = activeId ? linksRef.current.get(activeId) : undefined;
     if (!scroller || !link || !visible) return;
     if (Date.now() < quietUntilRef.current) return;
+    // While filtering, the list belongs to whoever is typing. Scrolling it to
+    // where the reader happens to be in the document would move the answer they
+    // are narrowing towards out from under them.
+    if (matched !== null) return;
 
     const pad = 32;
     const viewTop = scroller.scrollTop;
@@ -94,7 +140,7 @@ export function Toc({
       top: Math.max(0, next),
       behavior: reducedMotion() ? 'auto' : 'smooth',
     });
-  }, [activeId, visible]);
+  }, [activeId, visible, matched]);
 
   const navigate = useCallback((event: MouseEvent<HTMLAnchorElement>, id: string) => {
     // Modified clicks belong to the browser: new tab, new window, download.
@@ -130,54 +176,111 @@ export function Toc({
   }
 
   return (
-    <div
-      className="mdv-side-scroll"
-      ref={scrollerRef}
-      onWheel={hush}
-      onPointerDown={hush}
-      onTouchMove={hush}
-      onKeyDown={hush}
-    >
-      <TocList
-        nodes={tree}
-        activeId={activeId}
-        links={linksRef.current}
-        onNavigate={navigate}
+    <>
+      <FilterBox
+        value={filter}
+        onChange={setFilter}
+        label="Filter outline"
+        placeholder="Filter headings"
+        count={matched?.length ?? null}
+        controls={listId}
       />
-    </div>
+
+      <div
+        className="mdv-side-scroll"
+        ref={scrollerRef}
+        onWheel={hush}
+        onPointerDown={hush}
+        onTouchMove={hush}
+        onKeyDown={hush}
+      >
+        {matched === null ? (
+          <TocList
+            id={listId}
+            nodes={tree}
+            activeId={activeId}
+            links={linksRef.current}
+            onNavigate={navigate}
+          />
+        ) : matched.length === 0 ? (
+          <p className="mdv-side-empty">No headings match that.</p>
+        ) : (
+          <ul className="mdv-toc-list" id={listId}>
+            {matched.map((heading) => (
+              <li key={heading.id}>
+                <TocLink
+                  heading={heading}
+                  activeId={activeId}
+                  links={linksRef.current}
+                  onNavigate={navigate}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
+/**
+ * One entry. Extracted so the tree and the filtered list render the same link —
+ * the indent, the ref registration and the active marking all have to match, or
+ * clearing the filter would visibly change rows that did not change.
+ */
+function TocLink({
+  heading,
+  activeId,
+  links,
+  onNavigate,
+}: {
+  heading: Heading;
+  activeId: string | null;
+  links: Map<string, HTMLAnchorElement>;
+  onNavigate: (event: MouseEvent<HTMLAnchorElement>, id: string) => void;
+}) {
+  return (
+    <a
+      className="mdv-toc-link"
+      href={`#${heading.id}`}
+      data-level={heading.level}
+      aria-current={heading.id === activeId ? 'location' : undefined}
+      ref={(node) => {
+        if (node) links.set(heading.id, node);
+        return () => {
+          links.delete(heading.id);
+        };
+      }}
+      onClick={(event) => onNavigate(event, heading.id)}
+    >
+      {heading.text}
+    </a>
   );
 }
 
 function TocList({
+  id,
   nodes,
   activeId,
   links,
   onNavigate,
 }: {
+  id?: string;
   nodes: TocNode[];
   activeId: string | null;
   links: Map<string, HTMLAnchorElement>;
   onNavigate: (event: MouseEvent<HTMLAnchorElement>, id: string) => void;
 }) {
   return (
-    <ul className="mdv-toc-list">
+    <ul className="mdv-toc-list" id={id}>
       {nodes.map(({ heading, children }) => (
         <li key={heading.id}>
-          <a
-            className="mdv-toc-link"
-            href={`#${heading.id}`}
-            data-level={heading.level}
-            aria-current={heading.id === activeId ? 'location' : undefined}
-            ref={(node) => {
-              if (node) links.set(heading.id, node);
-              return () => {
-                links.delete(heading.id);
-              };
-            }}
-            onClick={(event) => onNavigate(event, heading.id)}
-          >
-            {heading.text}
-          </a>
+          <TocLink
+            heading={heading}
+            activeId={activeId}
+            links={links}
+            onNavigate={onNavigate}
+          />
 
           {children.length > 0 ? (
             <TocList

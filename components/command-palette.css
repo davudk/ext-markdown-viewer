@@ -1,0 +1,415 @@
+/* Markdown Viewer — command palette.
+
+   Every colour is a --mdv-* token from viewer.css, so the palette follows the
+   `data-mdv-theme` attribute on <html> with no palette of its own and no
+   prefers-color-scheme query.
+
+   Like the sidebar and the search panel, this is chrome: it uses the UI stack at
+   a fixed size rather than the reader's document typography. A command list set
+   in 22px serif is a worse command list.
+
+   Selectors are a class heavier than they need to be, for the same reason as
+   search.css — this file and viewer.css reach the page by different routes, so
+   nothing here may depend on winning a tie. */
+
+/* ==========================================================================
+   1. Layer and scrim
+
+   Fixed and full-viewport, so the shell's flex row never lays either of them
+   out: an absolutely positioned child of a flex container is not a flex item,
+   which is what keeps `.mdv > :not(nav) { flex: 1 1 auto }` in viewer.css from
+   stretching this into a second column beside the document.
+
+   Above the search panel's z-index (30), because the palette is modal and the
+   search panel is not.
+   ========================================================================== */
+
+.mdv-palette-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  /* Not centred vertically: a list that grows downward from a fixed point is
+     far easier to read against than one whose first row moves as you type. */
+  align-items: flex-start;
+  padding: min(12vh, 7rem) 1rem 1rem;
+  pointer-events: none;
+}
+
+.mdv-palette-scrim {
+  position: fixed;
+  inset: 0;
+  background-color: rgb(0 0 0 / 0.32);
+  pointer-events: auto;
+}
+
+/* ==========================================================================
+   2. Dialog
+   ========================================================================== */
+
+.mdv-palette {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(34rem, 100%);
+  max-height: min(70vh, 32rem);
+  border: 1px solid var(--mdv-border-strong);
+  border-radius: var(--mdv-radius);
+  background-color: var(--mdv-surface);
+  color: var(--mdv-fg);
+  font-family: var(--mdv-font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  box-shadow: 0 18px 48px -12px rgb(0 0 0 / 0.45);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+/* ==========================================================================
+   3. Query row
+   ========================================================================== */
+
+.mdv-palette-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: none;
+  padding: 0.5rem 0.55rem;
+  border-bottom: 1px solid var(--mdv-border);
+}
+
+.mdv-palette-icon {
+  flex: none;
+  display: block;
+  margin-left: 0.15rem;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-palette-field {
+  font: inherit;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0.25rem 0.1rem;
+  border: 0;
+  background: none;
+  color: var(--mdv-fg);
+}
+
+.mdv-palette-field::placeholder {
+  color: var(--mdv-fg-muted);
+}
+
+/* The field is the whole row visually, so its own ring would crop against the
+   dialog edge; the row lights up instead. */
+.mdv-palette-field:focus {
+  outline: none;
+}
+
+.mdv-palette-bar:focus-within {
+  box-shadow: inset 0 0 0 1px var(--mdv-accent);
+}
+
+.mdv-palette-close {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.65rem;
+  height: 1.65rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--mdv-radius-sm);
+  background: none;
+  color: var(--mdv-fg-muted);
+  cursor: pointer;
+  transition: background-color var(--mdv-dur) ease, color var(--mdv-dur) ease;
+}
+
+.mdv-palette-close:hover {
+  background-color: var(--mdv-bg);
+  color: var(--mdv-fg);
+}
+
+/* :focus-visible only — the close button is reached by Tab inside the trap, and
+   a ring on every pointer click would be noise. */
+.mdv-palette-close:focus-visible {
+  outline: 2px solid var(--mdv-accent);
+  outline-offset: 1px;
+}
+
+/* ==========================================================================
+   4. Results
+
+   Grouped by source, with the group name as a sticky header. The grouping is
+   the reason the palette is legible at all: "Export as HTML" the command and
+   "Export" the heading are one keystroke apart in a flat list.
+   ========================================================================== */
+
+.mdv-palette-results {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 0.3rem;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--mdv-scrollbar) transparent;
+}
+
+.mdv-palette-results::-webkit-scrollbar {
+  width: 9px;
+}
+
+.mdv-palette-results::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mdv-palette-results::-webkit-scrollbar-thumb {
+  background-color: var(--mdv-scrollbar);
+  border-radius: 5px;
+}
+
+.mdv-palette-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mdv-palette-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 0.45rem 0.7rem 0.25rem;
+  background-color: var(--mdv-surface);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-palette-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.32rem 0.7rem;
+  border-left: 2px solid transparent;
+  color: var(--mdv-fg-muted);
+  cursor: pointer;
+}
+
+.mdv-palette-row[aria-selected='true'] {
+  border-left-color: var(--mdv-accent);
+  background-color: var(--mdv-bg);
+  color: var(--mdv-fg);
+}
+
+.mdv-palette-text {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* One line per row: a wrapped command list costs the scan speed the list exists
+   for, and a title that is too long is still recognisable from its start. */
+.mdv-palette-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mdv-fg);
+}
+
+.mdv-palette-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-palette-hint {
+  flex: none;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--mdv-fg-muted);
+  white-space: nowrap;
+}
+
+.mdv-palette-row[aria-selected='true'] .mdv-palette-hint {
+  color: var(--mdv-fg);
+}
+
+/* ==========================================================================
+   5. Notes and announcements
+   ========================================================================== */
+
+.mdv-palette-empty,
+.mdv-palette-note {
+  flex: none;
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.75rem;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-palette-note {
+  border-top: 1px solid var(--mdv-border);
+  font-size: 0.7rem;
+}
+
+/* Announced, never seen — the list itself already says the same thing without
+   interrupting anyone. */
+.mdv-palette-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+   6. Sidebar filter boxes
+
+   The outline and file filters are the palette's matcher wearing the sidebar's
+   clothes, so they are styled here rather than duplicated into toc.css and
+   folder-browser.css — one set of rules, one look, one place to change it.
+   ========================================================================== */
+
+.mdv-filter {
+  /* Positioned so the visually-hidden live region below resolves against the
+     box rather than against whatever ancestor happens to be positioned. */
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: none;
+  margin: 0.4rem 0.4rem 0.15rem;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-sm);
+  background-color: var(--mdv-bg);
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-filter:focus-within {
+  border-color: var(--mdv-accent);
+  box-shadow: inset 0 0 0 1px var(--mdv-accent);
+}
+
+.mdv-filter-field {
+  font: inherit;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0.15rem 0;
+  border: 0;
+  background: none;
+  color: var(--mdv-fg);
+  font-size: 0.75rem;
+}
+
+.mdv-filter-field::placeholder {
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-filter-field:focus {
+  outline: none;
+}
+
+.mdv-filter-clear {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--mdv-radius-sm);
+  background: none;
+  color: var(--mdv-fg-muted);
+  cursor: pointer;
+}
+
+.mdv-filter-clear:hover {
+  background-color: var(--mdv-surface);
+  color: var(--mdv-fg);
+}
+
+.mdv-filter-clear:focus-visible {
+  outline: 2px solid var(--mdv-accent);
+  outline-offset: 1px;
+}
+
+.mdv-filter-count {
+  flex: none;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--mdv-fg-muted);
+  white-space: nowrap;
+}
+
+/* The same visually-hidden treatment as the palette's own live region. */
+.mdv-filter-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+   7. Viewport, motion and print
+   ========================================================================== */
+
+/* On a phone-width window the dialog is the screen, so it drops the floating
+   card treatment and sits flush across the top. */
+@media (max-width: 30rem) {
+  .mdv-palette-layer {
+    padding: 0;
+  }
+
+  .mdv-palette {
+    width: 100%;
+    max-height: 100vh;
+    height: 100%;
+    border-width: 0;
+    border-radius: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-palette-close {
+    transition: none;
+  }
+}
+
+/* The printed page is the document alone. The layer also carries
+   `data-mdv-chrome`, which is what viewer.css keys its own print rule off. */
+@media print {
+  .mdv-palette-layer {
+    display: none !important;
+  }
+}

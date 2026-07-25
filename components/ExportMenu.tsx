@@ -7,16 +7,18 @@ import {
   type KeyboardEvent,
 } from 'react';
 
+import type { ExportBridge } from '@/entrypoints/export-addon';
 import {
+  EXPORT_BRIDGE_KEY,
   EXPORT_FORMATS,
   VIEWER_THEME_DATASET_KEY,
   type ExportFormat,
 } from '@/lib/config';
-import {
-  exportDocument,
-  type ExportProgress,
-  type ExportTypography,
-} from '@/lib/export';
+// Types only, all of them. A value import from `lib/export.ts` would pull
+// `docx` — some 400 kB of OOXML writer — into the renderer for every document
+// that is merely read, which is the entire reason the export is an add-on.
+import type { ExportProgress, ExportTypography } from '@/lib/export';
+import { sendMessage, type AddonResult } from '@/lib/messages';
 
 import './export-menu.css';
 
@@ -25,6 +27,43 @@ const RESULT_MS = 6000;
 
 /** Where the document lives when the caller does not say. */
 const DEFAULT_BODY_SELECTOR = '.mdv-body';
+
+interface BridgeHost {
+  [EXPORT_BRIDGE_KEY]?: ExportBridge;
+}
+
+/**
+ * The export machinery, injected the first time it is wanted.
+ *
+ * `entrypoints/export-addon.ts` publishes a function on the isolated world's
+ * `window` — the same world this component runs in — and the service worker is
+ * asked to put it there. Every way this can go wrong ends in a thrown error the
+ * caller reports: the message failing, the injection being refused, or the
+ * property still being absent afterwards. None of them ends in waiting.
+ */
+async function exportBridge(): Promise<ExportBridge> {
+  const host = window as BridgeHost;
+  // Already injected — by an earlier export in this document, or by one in a
+  // document the reader has since navigated away from within the same page.
+  const installed = host[EXPORT_BRIDGE_KEY];
+  if (installed) return installed;
+
+  const result = await sendMessage<AddonResult>({
+    type: 'INJECT_ADDON',
+    addon: 'export',
+  });
+  if (!result?.ok) {
+    throw new Error(result?.error ?? 'the export add-on could not be injected');
+  }
+
+  const bridge = host[EXPORT_BRIDGE_KEY];
+  // `executeScript` has resolved, so the script has finished running. Nothing
+  // here means it declined — no viewer on the page — rather than that it is
+  // still on its way.
+  if (!bridge) throw new Error('the export add-on did not install');
+
+  return bridge;
+}
 
 export interface ExportMenuProps {
   /**
@@ -51,8 +90,11 @@ type Status =
  * The export menu: one entry per format in `EXPORT_FORMATS`, plus the progress
  * and outcome of the export in flight.
  *
- * Everything real happens in `lib/export.ts`; this is the button, the menu
- * keyboard model, and — the part worth the code — an honest report. A document
+ * Everything real happens in `entrypoints/export-addon.ts`, which is asked for
+ * on the first click and reached through `exportBridge` below; this is the
+ * button, the menu keyboard model, and — the part worth the code — an honest
+ * report. That includes the add-on failing to arrive, which surfaces in the
+ * same assertive live region as any other export failure. A document
  * with cross-origin images cannot be fully embedded without a network request,
  * so a perfectly ordinary export can succeed *partially*. Saying so ("exported,
  * 3 images could not be embedded") is the difference between a reader who knows
@@ -135,7 +177,11 @@ export function ExportMenu({
       setStatus({ state: 'busy', progress: null });
 
       try {
-        const result = await exportDocument({
+        // Injected on first use rather than at render time: unlike mermaid,
+        // nothing in a document says whether it will ever be exported.
+        const runExport = await exportBridge();
+
+        const result = await runExport({
           format,
           body,
           theme: theme ?? document.documentElement.dataset[VIEWER_THEME_DATASET_KEY],

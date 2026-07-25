@@ -12,6 +12,12 @@ import { before, test } from 'node:test';
 
 import { JSDOM } from 'jsdom';
 
+import {
+  MATH_DISPLAY_CLASS,
+  MATH_INLINE_CLASS,
+  MATH_PLACEHOLDER_CLASS,
+} from '../lib/config.ts';
+
 let renderMarkdown: typeof import('../lib/markdown.ts').renderMarkdown;
 
 before(async () => {
@@ -172,9 +178,20 @@ test('each parse starts with a fresh slug counter', () => {
 /* every case below is checked rather than assumed.                            */
 /* -------------------------------------------------------------------------- */
 
-/** No math anywhere in the output — KaTeX always leaves this class behind. */
+/**
+ * No math anywhere in the output.
+ *
+ * The parse no longer renders formulae — it emits a placeholder for
+ * `entrypoints/katex-addon.ts` to fill in — so this asks whether the tokenizer
+ * claimed the `$`, which is the property every test in this section is about.
+ */
 function hasMath(html: string): boolean {
-  return html.includes('class="katex');
+  return html.includes(`class="${MATH_PLACEHOLDER_CLASS}`);
+}
+
+/** The placeholder markup for one formula, TeX included. */
+function placeholder(tex: string, kind: string): string {
+  return `<span class="${MATH_PLACEHOLDER_CLASS} ${kind}">${tex}</span>`;
 }
 
 test('a code span beats math', () => {
@@ -218,23 +235,62 @@ test('shell variables in code spans stay code', () => {
   assert.ok(html.includes('<code>$PATH</code>'));
 });
 
-test('real math still renders', () => {
+test('real math becomes a placeholder carrying its own TeX', () => {
   const inline = renderMarkdown('Inline $x^2$ here.');
-  assert.ok(hasMath(inline.html), 'inline math did not render');
+  assert.ok(
+    inline.html.includes(placeholder('x^2', MATH_INLINE_CLASS)),
+    'inline math was not tokenized into a placeholder',
+  );
 
   const block = renderMarkdown('$$\n\\frac{a}{b}\n$$\n');
-  assert.ok(hasMath(block.html), 'display math did not render');
+  assert.ok(block.html.includes(MATH_DISPLAY_CLASS), 'display math was not tokenized');
+  assert.ok(block.html.includes('\\frac{a}{b}'), 'the TeX did not survive the parse');
+});
 
-  // The surd is drawn with an inline <svg>, which is the whole reason
-  // PURIFY_CONFIG turns the SVG profile on; losing it is silent.
-  const surd = renderMarkdown('$\\sqrt{x}$');
-  assert.ok(surd.html.includes('<svg'), 'KaTeX svg was sanitized away');
+test('the parse renders no KaTeX at all', () => {
+  // The acceptance criterion, at the only place it can be asserted without a
+  // browser: a document with math still costs the base bundle nothing, because
+  // nothing here calls KaTeX. The add-on is what turns these into formulae.
+  const { html } = renderMarkdown('$x^2$ and $$\\frac{a}{b}$$');
+  assert.ok(!html.includes('class="katex'), 'the parser rendered KaTeX markup');
+  assert.ok(!html.includes('<math'), 'the parser emitted MathML');
+});
+
+test('a placeholder cannot carry markup out of the TeX', () => {
+  // The TeX is text content, and text content is escaped by construction —
+  // which is also why it is not a `data-` attribute: ALLOW_DATA_ATTR is off.
+  const { html } = renderMarkdown('$</span><img src=x onerror=alert(1)>$');
+  assert.ok(hasMath(html), 'the formula was not tokenized');
+  assert.ok(!html.includes('<img'), 'markup escaped the placeholder');
+  assert.ok(html.includes('&lt;'), 'the TeX was not escaped');
+});
+
+test('a formula that never reaches the add-on still reads as its source', () => {
+  // Nothing injects the add-on in a test, so this *is* the un-rendered case:
+  // the reader sees the TeX rather than an empty gap.
+  const { html } = renderMarkdown('$E = mc^2$');
+  assert.ok(html.includes('E = mc^2'));
 });
 
 test('math and code spans coexist in one paragraph', () => {
   const { html } = renderMarkdown('$a$ then `b` then $c$');
   assert.ok(html.includes('<code>b</code>'));
-  assert.equal(html.match(/class="katex"/g)?.length, 2, 'both formulae should render');
+  assert.equal(
+    html.match(new RegExp(`class="${MATH_PLACEHOLDER_CLASS} `, 'g'))?.length,
+    2,
+    'both formulae should be tokenized',
+  );
+});
+
+test('raw MathML is no longer part of the allowlist', () => {
+  // PURIFY_CONFIG dropped the mathMl profile and the hand-reopened
+  // `semantics`/`annotation` when math stopped being rendered here. A document
+  // that hand-writes MathML degrades to its text; it does not reach the DOM.
+  const { html } = renderMarkdown(
+    '<math><semantics><mi>x</mi><annotation encoding="application/x-tex">x</annotation></semantics></math>',
+  );
+  assert.ok(!html.includes('<math'), 'MathML survived sanitization');
+  assert.ok(!html.includes('<annotation'), 'an annotation survived sanitization');
 });
 
 /* -------------------------------------------------------------------------- */
