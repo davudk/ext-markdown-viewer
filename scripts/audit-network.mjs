@@ -30,6 +30,10 @@ const INERT_URLS = [
   ['https://mermaid.js.org/', 'mermaid documentation links in error text'],
   ['https://katex.org/', 'KaTeX error and documentation links'],
   ['https://langium.org/', 'langium cyclic-dependency error message'],
+  [
+    'https://github.com/valeriangalliat/markdown-it-anchor',
+    'markdown-it-anchor deprecation message for its legacy permalink option',
+  ],
   ['https://en.wikipedia.org/', 'left-recursion explanation in a langium grammar error'],
 ];
 
@@ -217,6 +221,11 @@ for (const file of walk(OUT)) {
   }
 
   for (const url of new Set(text.match(/https?:\/\/[^\s'"`)\\]+/g) ?? [])) {
+    // A template interpolation is a URL *shape*, not an address: `http://${x}`
+    // builds a string at runtime and names no endpoint. Matching the literal
+    // would also be brittle — the minified identifier inside changes per build.
+    if (url.includes('${')) continue;
+
     const inert = INERT_URLS.find(([prefix]) => url.startsWith(prefix));
     if (inert) notices.push(`${file}: ${url} — ${inert[1]}`);
     else failures.push(`${file}: unclassified external URL ${url}`);

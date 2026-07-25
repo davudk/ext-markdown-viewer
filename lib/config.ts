@@ -12,9 +12,10 @@
  * no risk of a cycle.
  */
 
+import type { MarkdownKatexOptions } from '@vscode/markdown-it-katex';
 import type { Config as PurifyConfig } from 'dompurify';
-import type { MarkedExtension } from 'marked';
-import type { MarkedKatexOptions } from 'marked-katex-extension';
+import type { KatexOptions } from 'katex';
+import type { Options as MarkdownItOptions } from 'markdown-it';
 
 /* -------------------------------------------------------------------------- */
 /* Activation                                                                  */
@@ -935,20 +936,118 @@ export const SETTINGS_FILE_BASENAME = 'markdown-viewer-settings';
 /* Markdown pipeline                                                           */
 /* -------------------------------------------------------------------------- */
 
-/** Typed as an extension because that is what the `Marked` constructor accepts. */
-export const MARKED_OPTIONS: MarkedExtension = {
-  async: false,
-  gfm: true,
+/**
+ * `html: true` is not a relaxation, it is a statement about where safety comes
+ * from. A README that wraps a section in `<details>` is ordinary, and escaping
+ * it would render the tags as text; what makes the output safe is PURIFY_CONFIG
+ * below, applied to everything, rather than the parser refusing one input shape.
+ *
+ * `linkify` is off because turning every bare URL into a link invents links the
+ * author did not write — and `lib/links.ts` then decorates them as external.
+ * `typographer` is off because it rewrites quotes and dashes inside prose that
+ * is often quoting an exact string.
+ */
+export const MARKDOWN_IT_OPTIONS: MarkdownItOptions = {
+  html: true,
+  xhtmlOut: false,
   breaks: false,
+  linkify: false,
+  typographer: false,
 };
 
 /**
- * marked-highlight appends the language tag to this, so the emitted class is
+ * The language tag is appended to this, so the emitted class is
  * `hljs language-ts` — the stylesheet keys off the `hljs` class and the token
- * spans, so both parts have to be there.
+ * spans, `lib/export.ts` carries the same rules, and the mermaid add-on finds
+ * its blocks by `language-mermaid`. All three parts have to be there.
+ *
+ * markdown-it's own `langPrefix` is deliberately not used: it emits no class at
+ * all for a fence with no language, which would drop the `hljs` class that
+ * unlabelled blocks have always carried. `lib/markdown.ts` builds the whole
+ * `<pre>` instead.
  */
 export const HIGHLIGHT_LANG_PREFIX = 'hljs language-';
 export const HIGHLIGHT_EMPTY_LANG_CLASS = 'hljs';
+
+/**
+ * Class prefix shared by GitHub alerts (`> [!NOTE]`) and `:::` containers.
+ *
+ * One prefix for both on purpose: they are the same thing written twice by two
+ * ecosystems, and giving them one shape means one block of CSS, one set of
+ * icons, and no chance of the two drifting apart visually.
+ */
+export const ALERT_CLASS_PREFIX = 'mdv-alert';
+
+/**
+ * The five GitHub alert markers, and the only names an icon exists for.
+ * Uppercase because that is how they are written; matching is case-insensitive.
+ */
+export const ALERT_MARKERS = [
+  'NOTE',
+  'TIP',
+  'IMPORTANT',
+  'WARNING',
+  'CAUTION',
+] as const;
+
+export type AlertKind = Lowercase<(typeof ALERT_MARKERS)[number]>;
+
+/**
+ * `:::name` containers, as MkDocs, Docusaurus and VitePress spell them.
+ *
+ * Each maps onto one of the five alert kinds rather than introducing a palette
+ * of its own: `:::danger` and `> [!CAUTION]` mean the same thing to a reader,
+ * and a document that uses both should not look like it uses two systems. The
+ * title is what appears when the author writes no title of their own.
+ */
+export const CONTAINER_TYPES: ReadonlyArray<{
+  name: string;
+  title: string;
+  kind: AlertKind;
+}> = [
+  { name: 'note', title: 'Note', kind: 'note' },
+  { name: 'info', title: 'Info', kind: 'note' },
+  { name: 'tip', title: 'Tip', kind: 'tip' },
+  { name: 'important', title: 'Important', kind: 'important' },
+  { name: 'warning', title: 'Warning', kind: 'warning' },
+  { name: 'caution', title: 'Caution', kind: 'caution' },
+  { name: 'danger', title: 'Danger', kind: 'caution' },
+];
+
+/**
+ * MultiMarkdown table extensions. Only the ones that are strict supersets of
+ * GFM are on, so a table that parsed before parses identically now.
+ *
+ * `multibody` is off because it is not a superset, and the way it fails is
+ * silent: it treats a blank line inside a table as a `<tbody>` break, which
+ * means two ordinary GFM tables written back to back become one table whose
+ * second header row renders as a row of literal `---` cells. Two tables in a
+ * row is far commoner in a README than multiple row groups in one.
+ *
+ * `autolabel` is off for a duller reason: it mints an `id` on every captioned
+ * table out of the caption text, in the same namespace as the heading slugs,
+ * and nothing in the viewer links to a table.
+ */
+export const MULTIMD_TABLE_OPTIONS = {
+  multiline: true,
+  rowspan: true,
+  headerless: true,
+  multibody: false,
+  autolabel: false,
+};
+
+/**
+ * What `[[Page Name]]` resolves to.
+ *
+ * A relative `.md` sibling, because that is what the link means in every folder
+ * of notes that uses the syntax — and because a relative href is the one form the
+ * browser resolves correctly for a `file://` note and a served one alike.
+ * Spaces are kept rather than turned into underscores: the target is a real file
+ * whose name is what the author typed. `lib/markdown.ts` describes what is left
+ * unresolved for documents opened through a directory handle.
+ */
+export const WIKILINK_SUFFIX = '.md';
+export const WIKILINK_CLASS = 'mdv-wikilink';
 
 /**
  * Checked against DOMPurify 3.4.12: its defaults already keep the two bits of
@@ -975,7 +1074,9 @@ export const PURIFY_CONFIG: PurifyConfig = {
   // the discarded `<annotation>` and into `<math>` as loose text, which every
   // screen reader reads aloud. `annotation-xml` stays disallowed.
   ADD_TAGS: ['semantics', 'annotation'],
-  ADD_ATTR: ['align', 'type', 'checked', 'disabled'],
+  // `colspan`/`rowspan` arrive with MultiMarkdown tables. Both are in
+  // DOMPurify's defaults; pinning them here is the same insurance as `align`.
+  ADD_ATTR: ['align', 'type', 'checked', 'disabled', 'colspan', 'rowspan'],
   // Nothing in markdown output needs data-*; dropping them shrinks the surface
   // for attribute-based gadgets in whatever consumes the DOM later.
   ALLOW_DATA_ATTR: false,
@@ -993,7 +1094,15 @@ export const PURIFY_CONFIG: PurifyConfig = {
  * to its (identical) default: it is what keeps `\includegraphics` and `\href`
  * disabled, and `\includegraphics` is a network request in TeX's clothing.
  */
-export const KATEX_OPTIONS: MarkedKatexOptions = {
+export const KATEX_OPTIONS: MarkdownKatexOptions & KatexOptions = {
+  // Off, all four of them. `\begin{…}` without `$$`, `$$` inside raw HTML
+  // blocks, and ```math fences each hand a second syntax the power to become
+  // math — and the last one would take a fenced block away from the code path
+  // that the copy button, the highlighter and the mermaid add-on all rely on.
+  enableBareBlocks: false,
+  enableMathBlockInHtml: false,
+  enableMathInlineInHtml: false,
+  enableFencedBlocks: false,
   // A malformed formula must render as a legible error in place, not abort the
   // parse and cost the reader the whole document.
   throwOnError: false,

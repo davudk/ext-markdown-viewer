@@ -828,7 +828,100 @@ body {
 }
 
 /* ==========================================================================
-   13. Scrollbars & selection
+   13. Alerts & containers
+
+   `> [!NOTE]` and `:::note` render to the same markup — see ALERT_CLASS_PREFIX
+   in lib/config.ts, where the two are deliberately given one shape — so one set
+   of rules covers both.
+
+   The kind is carried by a left rule and the title, never by a coloured
+   background wash. Three reasons, none of them taste: the body stays on the
+   same surface as the rest of the document and so keeps the contrast the theme
+   was checked at; a wash is the first thing a printer drops, which would leave
+   five identical grey boxes; and the accent has to come from THEME_TOKENS,
+   which are syntax colours verified against `--mdv-surface`, not tints designed
+   to be sat on.
+   ========================================================================== */
+
+.mdv-body .mdv-alert {
+  /* Set per kind below and read by both the rule and the title, so a kind is
+     one declaration rather than two that can drift. */
+  --mdv-alert-accent: var(--mdv-accent);
+
+  margin: 0 0 var(--mdv-block-gap);
+  padding: 0.8em 1.1em;
+  border: 1px solid var(--mdv-border);
+  border-left: 3px solid var(--mdv-alert-accent);
+  border-radius: var(--mdv-radius);
+  background-color: var(--mdv-surface-alt);
+}
+
+/* `surface-alt` is always further from the text colour than `surface` is, in
+   both polarities and every preset, so a token that clears AA on one clears it
+   on the other. */
+.mdv-body .mdv-alert-note {
+  --mdv-alert-accent: var(--mdv-accent);
+}
+
+.mdv-body .mdv-alert-tip {
+  /* The diff-addition green rather than the tag green: it is the one token
+     guaranteed to be green in every preset, because that is what it is for. */
+  --mdv-alert-accent: var(--mdv-tk-addition);
+}
+
+.mdv-body .mdv-alert-important {
+  --mdv-alert-accent: var(--mdv-tk-title);
+}
+
+.mdv-body .mdv-alert-warning {
+  --mdv-alert-accent: var(--mdv-tk-builtin);
+}
+
+.mdv-body .mdv-alert-caution {
+  --mdv-alert-accent: var(--mdv-tk-deletion);
+}
+
+.mdv-body .mdv-alert > :first-child {
+  margin-top: 0;
+}
+
+.mdv-body .mdv-alert > :last-child {
+  margin-bottom: 0;
+}
+
+.mdv-body .mdv-alert-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  margin: 0 0 0.5em;
+  font-weight: 650;
+  line-height: 1.4;
+  color: var(--mdv-alert-accent);
+}
+
+/* Inline SVG written by lib/markdown.ts, drawn in `currentColor` so it follows
+   the title. `flex: none` keeps a narrow column from squashing it, and the
+   explicit size overrides the `height: auto` every other svg in the document
+   gets in section 9. */
+.mdv-body .mdv-alert-icon {
+  flex: none;
+  width: 1.05em;
+  height: 1.05em;
+}
+
+/* An alert whose body is empty is still a legible one-line note. */
+.mdv-body .mdv-alert > .mdv-alert-title:last-child {
+  margin-bottom: 0;
+}
+
+/* Same reasoning as the blockquote and list cases in section 10: a code block
+   on a raised surface needs to step back down to be readable as one. */
+.mdv-body .mdv-alert pre {
+  background-color: var(--mdv-bg);
+}
+
+/* ==========================================================================
+   14. Scrollbars & selection
    ========================================================================== */
 
 .mdv-body pre::-webkit-scrollbar,
@@ -853,7 +946,7 @@ body {
 }
 
 /* ==========================================================================
-   14. Motion
+   15. Motion
    ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
@@ -867,7 +960,7 @@ body {
 }
 
 /* ==========================================================================
-   15. Print
+   16. Print
 
    Two jobs: force the light palette regardless of the active theme, and strip
    the page back to the document — no sidebar, no toolbars, no buttons, no
@@ -958,8 +1051,17 @@ body {
   .mdv-body tr,
   .mdv-body img,
   .mdv-body figure,
-  .mdv-body details {
+  .mdv-body details,
+  .mdv-body .mdv-alert {
     break-inside: avoid;
+  }
+
+  /* Printers drop backgrounds by default, so the alert's identity has to
+     survive in ink alone: the left rule is already a border, and this makes it
+     wide enough to read as one after the fill is gone. */
+  .mdv-body .mdv-alert {
+    background: none;
+    border-left-width: 4px;
   }
 
   .mdv-body pre {
