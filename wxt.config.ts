@@ -23,6 +23,15 @@ export default defineConfig({
     ],
   },
   vite: () => ({
+    // Chromium validates every extension file with `base::IsStringUTF8`, which
+    // is stricter than "decodes as UTF-8": it also rejects Unicode
+    // noncharacters. KaTeX's lexer contains a literal U+FFFF inside a regex
+    // character class, and Vite defaults esbuild's output charset to `utf8`,
+    // so that character was emitted verbatim — and Chrome refused to load
+    // renderer.js with "It isn't UTF-8 encoded". Escaping non-ASCII output
+    // turns it into `￿`, which is the same string to the JS engine and an
+    // ordinary ASCII byte sequence on disk.
+    esbuild: { charset: 'ascii' },
     build: {
       // Vite's module-preload polyfill emits a `fetch()` to warm preload links.
       // It only ever requests same-origin extension resources, but the zero-

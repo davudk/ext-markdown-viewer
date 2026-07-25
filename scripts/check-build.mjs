@@ -82,6 +82,36 @@ for (const file of walk(OUT)) {
   );
 }
 
+/**
+ * Chromium refuses any extension file that fails `base::IsStringUTF8`, which
+ * rejects surrogates and Unicode noncharacters as well as malformed bytes. The
+ * failure mode is total and the message is misleading — "It isn't UTF-8
+ * encoded" on a file that decodes perfectly — so it is worth asserting rather
+ * than rediscovering. `scripts/fix-noncharacters.mjs` is what keeps this true.
+ */
+for (const file of walk(OUT)) {
+  if (!/\.(js|css|html|json)$/.test(file)) continue;
+  const text = readFileSync(file, 'utf8');
+
+  for (let i = 0; i < text.length; i += 1) {
+    const codePoint = text.codePointAt(i);
+    if (codePoint > 0xffff) i += 1;
+
+    const isSurrogate = codePoint >= 0xd800 && codePoint <= 0xdfff;
+    const isNoncharacter =
+      (codePoint >= 0xfdd0 && codePoint <= 0xfdef) ||
+      (codePoint & 0xfffe) === 0xfffe;
+
+    if (isSurrogate || isNoncharacter) {
+      problems.push(
+        `Chrome will refuse this file: U+${codePoint.toString(16).toUpperCase()} at ` +
+          `offset ${i} in ${file.slice(OUT.length + 1)} — run scripts/fix-noncharacters.mjs`,
+      );
+      break;
+    }
+  }
+}
+
 const manifest = JSON.parse(readFileSync(join(OUT, 'manifest.json'), 'utf8'));
 
 if (manifest.content_scripts) {
