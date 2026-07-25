@@ -14,8 +14,9 @@
  * is not allowed to load them.
  *
  * `entrypoints/katex-theme.css` and `public/fonts/` are both generated from the
- * installed katex package rather than hand-edited — the header of that file
- * says what the three transformations are and why. Regenerate on upgrade.
+ * installed katex package by `scripts/build-katex-theme.mjs` rather than
+ * hand-edited — that file explains the three transformations and why each one
+ * is needed. Rerun it when katex is upgraded.
  *
  * That leaves this file the two jobs CSS cannot do, both of which need layout:
  * making an over-wide equation reachable from the keyboard, and noticing that

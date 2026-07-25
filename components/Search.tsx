@@ -467,11 +467,16 @@ export function Search({ headings }: { headings: Heading[] }) {
   const [revision, setRevision] = useState(0);
 
   const indexRef = useRef<DocIndex | null>(null);
+  /** `current`, readable between renders. See `step`. */
+  const currentRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
+  // The window listener is bound once; this is how it reads current state.
   const openRef = useRef(open);
-  openRef.current = open;
+  useEffect(() => {
+    openRef.current = open;
+  });
 
   const listId = useId();
   const optionId = (position: number) => `${listId}-${position}`;
@@ -608,6 +613,7 @@ export function Search({ headings }: { headings: Heading[] }) {
 
     setResult(found);
     setCurrent(next);
+    currentRef.current = next;
     // Instant while typing: a smooth scroll per keystroke would still be
     // travelling when the next one lands.
     reveal(index, found.matches[next], false);
@@ -674,6 +680,7 @@ export function Search({ headings }: { headings: Heading[] }) {
       // are at — the count already tells them.
       const next = ((position % total) + total) % total;
       setCurrent(next);
+      currentRef.current = next;
 
       const index = indexRef.current;
       if (index) reveal(index, result.matches[next], true);
@@ -681,9 +688,12 @@ export function Search({ headings }: { headings: Heading[] }) {
     [result, total],
   );
 
+  // Stepped from the ref rather than from the rendered value: two Enters landing
+  // in the same frame would otherwise both be measured from the same start and
+  // the second would go nowhere.
   const step = useCallback(
-    (delta: number) => goTo(current + delta),
-    [current, goTo],
+    (delta: number) => goTo(currentRef.current + delta),
+    [goTo],
   );
 
   const onInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {

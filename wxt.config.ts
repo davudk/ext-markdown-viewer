@@ -11,6 +11,16 @@ export default defineConfig({
     // runtime out of `optional_host_permissions`.
     permissions: ['storage', 'activeTab', 'scripting', 'downloads'],
     optional_host_permissions: ['*://*/*'],
+    // KaTeX's stylesheet is injected into the page, and Chrome resolves its
+    // `url(../fonts/…)` against the extension. Without this the fonts are
+    // silently refused and math renders in whatever the browser guesses —
+    // a wrong-typeface failure with no error anywhere.
+    web_accessible_resources: [
+      {
+        resources: ['fonts/*.woff2'],
+        matches: ['<all_urls>'],
+      },
+    ],
   },
   vite: () => ({
     build: {

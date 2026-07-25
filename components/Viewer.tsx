@@ -11,6 +11,8 @@ import { renderMarkdown } from '@/lib/markdown';
 import { onSettingsChanged, saveSettings, type Settings } from '@/lib/settings';
 
 import { Document } from './Document';
+import { Lightbox } from './Lightbox';
+import { Search } from './Search';
 import { Toc } from './Toc';
 
 /**
@@ -78,6 +80,12 @@ export function Viewer({
         showRaw={showRaw}
         onToggleRaw={() => setShowRaw((raw) => !raw)}
       />
+
+      {/* Both are position-fixed overlays rather than flex children, so they sit
+          outside the document track and cannot become a second column. Search is
+          pointless over raw source, which has no headings to group results by. */}
+      {showRaw ? null : <Search headings={doc.headings} />}
+      <Lightbox enabled={settings.lightbox && !showRaw} />
     </div>
   );
 }
