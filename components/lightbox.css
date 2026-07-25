@@ -1,0 +1,382 @@
+/* Markdown Viewer — the image lightbox.
+
+   Two things are styled here: the affordance on a clickable image inside the
+   document, and the full-screen overlay that opens from it.
+
+   The overlay is rendered through a portal onto <body>, which means it is
+   *outside* `#mdv-root`. Several rules in entrypoints/viewer.css are scoped to
+   that root — the box-sizing reset, the focus ring, the reduced-motion
+   override, the print strip — and none of them reach a portal. Each one is
+   restated below rather than assumed; where that is the reason for a rule, it
+   is called out.
+
+   Every colour is a `--mdv-*` token, so both themes are covered without a
+   single media query. The one deliberate exception is the stage, explained
+   where it happens. */
+
+/* ==========================================================================
+   1. The affordance in the document
+
+   Attribute selector, not a class: it is the same marker the delegated click
+   handler matches on, and `ALLOW_DATA_ATTR: false` in the sanitizer means an
+   untrusted document cannot mint one. Heavier than the `.mdv-body img` rule in
+   viewer.css on purpose — this file and that one reach the page by different
+   routes, so nothing here may depend on winning a tie.
+   ========================================================================== */
+
+.mdv-body img[data-mdv-zoomable] {
+  cursor: zoom-in;
+  /* A ring rather than a border or an outline: no layout shift on hover, and
+     it reads as "liftable" instead of as a focus indicator. */
+  box-shadow: 0 0 0 0 transparent;
+  transition: box-shadow var(--mdv-dur) ease;
+}
+
+.mdv-body img[data-mdv-zoomable]:hover {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mdv-accent) 28%, transparent);
+}
+
+/* ==========================================================================
+   2. Overlay shell
+
+   Fixed and at the top of the stacking order. The viewer's own chrome tops out
+   at z-index 20, but an add-on or a future feature could introduce its own
+   context, and an image viewer that opens *behind* the sidebar is useless.
+   ========================================================================== */
+
+.mdv-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: flex;
+
+  /* `--mdv-font-body` is written inline on `.mdv` and is therefore invisible
+     out here; the root token is the right fallback anyway, since this is
+     chrome rather than document text. */
+  font-family: var(--mdv-font-sans);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--mdv-fg);
+
+  /* The stage is deliberately near-black in both themes: a picture is judged
+     against its surround, and a white surround skews everything shown on it.
+     It is still derived from the theme rather than hardcoded, so the dark
+     theme's slightly cooler page tint carries through. */
+  background-color: color-mix(in srgb, var(--mdv-bg) 8%, #000);
+
+  /* Nothing outside `#mdv-root` inherits the shell's box-sizing reset. */
+  box-sizing: border-box;
+}
+
+.mdv-lightbox *,
+.mdv-lightbox *::before,
+.mdv-lightbox *::after {
+  box-sizing: border-box;
+}
+
+/* The `#mdv-root :focus-visible` rule in viewer.css cannot see this subtree. */
+.mdv-lightbox :focus-visible {
+  outline: 2px solid var(--mdv-accent);
+  outline-offset: 2px;
+  border-radius: var(--mdv-radius-sm);
+}
+
+.mdv-lightbox-dialog {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  /* Both are what let the stage shrink instead of pushing the caption off the
+     bottom of a flex column. */
+  min-width: 0;
+  min-height: 0;
+}
+
+.mdv-lightbox-icon {
+  flex: none;
+  display: block;
+}
+
+/* ==========================================================================
+   3. Bar and caption
+
+   These two are opaque theme-coloured panels rather than text floating on the
+   scrim. That is what keeps the whole thing token-driven: `--mdv-fg` on
+   `--mdv-surface` is legible in either theme, while the same text laid over a
+   near-black stage would be unreadable in the light one.
+   ========================================================================== */
+
+.mdv-lightbox-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.7rem;
+  background-color: var(--mdv-surface);
+  border-bottom: 1px solid var(--mdv-border);
+}
+
+.mdv-lightbox-count {
+  margin: 0;
+  color: var(--mdv-fg-muted);
+  font-weight: 550;
+  /* The counter changes on every step; proportional digits make it twitch. */
+  font-variant-numeric: tabular-nums;
+}
+
+.mdv-lightbox-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.mdv-lightbox-caption {
+  flex: none;
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  background-color: var(--mdv-surface);
+  border-top: 1px solid var(--mdv-border);
+  text-align: center;
+  text-wrap: pretty;
+  /* A pathological alt string must not eat the picture it describes. */
+  max-height: 30vh;
+  overflow-y: auto;
+  overflow-wrap: break-word;
+  scrollbar-color: var(--mdv-scrollbar) transparent;
+}
+
+.mdv-lightbox-caption > span {
+  display: block;
+}
+
+.mdv-lightbox-title {
+  margin-top: 0.15em;
+  color: var(--mdv-fg-muted);
+  font-size: 0.92em;
+}
+
+/* ==========================================================================
+   4. Controls
+   ========================================================================== */
+
+.mdv-lightbox-button {
+  font: inherit;
+  font-weight: 550;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0.5em;
+  color: var(--mdv-fg-muted);
+  background-color: var(--mdv-bg);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-sm);
+  cursor: pointer;
+  transition: color var(--mdv-dur) ease, background-color var(--mdv-dur) ease,
+    border-color var(--mdv-dur) ease;
+}
+
+.mdv-lightbox-button:hover:not(:disabled) {
+  color: var(--mdv-fg);
+  border-color: var(--mdv-border-strong);
+}
+
+.mdv-lightbox-button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+/* The step controls sit over the stage, so they carry their own surface to
+   stay legible against whatever the image happens to be. */
+.mdv-lightbox-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  translate: 0 -50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  padding: 0;
+  color: var(--mdv-fg-muted);
+  background-color: var(--mdv-surface);
+  border: 1px solid var(--mdv-border);
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease,
+    border-color var(--mdv-dur) ease;
+}
+
+.mdv-lightbox-nav:hover,
+.mdv-lightbox-nav:focus-visible {
+  opacity: 1;
+  color: var(--mdv-fg);
+  border-color: var(--mdv-border-strong);
+}
+
+.mdv-lightbox-nav[data-side='prev'] {
+  left: clamp(0.4rem, 1.5vw, 1.25rem);
+}
+
+.mdv-lightbox-nav[data-side='next'] {
+  right: clamp(0.4rem, 1.5vw, 1.25rem);
+}
+
+/* ==========================================================================
+   5. Stage and image
+   ========================================================================== */
+
+.mdv-lightbox-figure {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  /* A <figure> arrives with UA margins, and this one is a layout box. */
+  margin: 0;
+}
+
+.mdv-lightbox-stage {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: clamp(0.5rem, 2vw, 2rem);
+  /* A zoomed image is clipped to the stage instead of painting over the bar
+     and the caption. */
+  overflow: hidden;
+  /* Touch drags pan the image; without this the browser claims them first. */
+  touch-action: none;
+}
+
+.mdv-lightbox-image {
+  /* Fit-to-screen is the layout, not the transform: the element is sized to
+     the stage and scale 1 means "as large as fits". That is what keeps a
+     10000px screenshot from opening at ten times the viewport, and what lets
+     the pan clamp measure against a size the transform cannot influence. */
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  transform-origin: center center;
+  transition: transform 160ms ease;
+  cursor: zoom-in;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.mdv-lightbox-image[data-mdv-zoom='in'] {
+  cursor: grab;
+}
+
+/* Live drag: the transform is already following the pointer, so easing it
+   would only make the image lag behind the hand moving it. */
+.mdv-lightbox-image[data-mdv-drag] {
+  cursor: grabbing;
+  transition: none;
+}
+
+/* A broken image would otherwise show the browser's own placeholder glyph
+   next to our explanation of the same thing. */
+.mdv-lightbox-image[data-mdv-state='error'] {
+  display: none;
+}
+
+/* Still loading: keep the frame from collapsing to nothing behind the notice. */
+.mdv-lightbox-image[data-mdv-state='loading'] {
+  min-width: 1px;
+  min-height: 1px;
+}
+
+/* ==========================================================================
+   6. Loading and error states
+   ========================================================================== */
+
+.mdv-lightbox-state {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  display: flex;
+  align-items: center;
+  gap: 0.55em;
+  margin: 0;
+  padding: 0.7em 1em;
+  max-width: min(90%, 34ch);
+  color: var(--mdv-fg-muted);
+  background-color: var(--mdv-surface);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius);
+  text-align: left;
+}
+
+.mdv-lightbox-spinner {
+  flex: none;
+  width: 0.95em;
+  height: 0.95em;
+  border: 2px solid var(--mdv-border-strong);
+  border-top-color: var(--mdv-accent);
+  border-radius: 999px;
+  animation: mdv-lightbox-spin 700ms linear infinite;
+}
+
+@keyframes mdv-lightbox-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+/* ==========================================================================
+   7. Narrow windows
+   ========================================================================== */
+
+@media (max-width: 30rem) {
+  .mdv-lightbox-nav {
+    width: 2.2rem;
+    height: 2.2rem;
+  }
+
+  .mdv-lightbox-stage {
+    padding: 0.35rem;
+  }
+}
+
+/* ==========================================================================
+   8. Motion and print
+
+   Both blocks exist because their counterparts in viewer.css are scoped to
+   `#mdv-root` and this overlay is portalled outside it — `#mdv-root *` and
+   `#mdv-root [data-mdv-chrome]` never match a single node in here. The
+   attribute is still set on the root element so the intent stays greppable and
+   so nothing breaks if the overlay ever moves back inside the shell.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-body img[data-mdv-zoomable],
+  .mdv-lightbox-image,
+  .mdv-lightbox-button,
+  .mdv-lightbox-nav {
+    transition: none;
+  }
+
+  /* The notice reads perfectly well without a spinning ring. */
+  .mdv-lightbox-spinner {
+    animation: none;
+    border-top-color: var(--mdv-border-strong);
+  }
+}
+
+@media print {
+  .mdv-lightbox {
+    display: none !important;
+  }
+
+  /* On paper an image is an image; the hover ring is meaningless and the
+     cursor does not exist. */
+  .mdv-body img[data-mdv-zoomable] {
+    box-shadow: none !important;
+  }
+}

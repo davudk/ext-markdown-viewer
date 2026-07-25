@@ -29,6 +29,12 @@ const injected = [
   ...[...config.matchAll(/^export const RENDERER_\w+_FILES = \[([^\]]*)\];$/gm)].flatMap((m) =>
     [...m[1].matchAll(/'([^']+)'/g)].map((f) => f[1]),
   ),
+  // Add-ons are injected on demand rather than alongside the renderer, but they
+  // are injected all the same — without this their files read as unreachable.
+  ...[...config.matchAll(/js: '([^']+)'/g)].map((m) => m[1]),
+  ...[...config.matchAll(/css: \[([^\]]*)\]/g)].flatMap((m) =>
+    [...m[1].matchAll(/'([^']+)'/g)].map((f) => f[1]),
+  ),
 ];
 
 if (injected.length < 2) {

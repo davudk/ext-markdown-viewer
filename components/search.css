@@ -1,0 +1,353 @@
+/* Markdown Viewer — in-document search.
+
+   Every colour is a --mdv-* token from viewer.css, so the panel follows the
+   `data-mdv-theme` attribute on <html> with no palette of its own and no
+   prefers-color-scheme query.
+
+   Like the sidebar, this is chrome: it uses the UI stack at a fixed size rather
+   than the reader's document typography, because a 22px serif result list is a
+   worse index than a small sans one.
+
+   Selectors are a class heavier than they need to be, for the same reason as
+   document.css — this file and viewer.css reach the page by different routes,
+   so nothing here may depend on winning a tie. */
+
+/* ==========================================================================
+   1. Painted matches
+
+   The document is never marked up: matches are Range objects handed to
+   CSS.highlights, and these two rules are the entire visual result. Only a
+   short list of properties is honoured inside ::highlight() — colour,
+   background-color, text-decoration and text-shadow — so there is deliberately
+   no padding, border or radius here to be silently dropped.
+
+   The custom properties resolve against `:root[data-mdv-theme=…]`, which is
+   what makes both themes work through a pseudo-element that cannot carry a
+   class of its own.
+   ========================================================================== */
+
+.mdv-body ::highlight(mdv-search) {
+  background-color: var(--mdv-mark-bg);
+  color: var(--mdv-fg);
+}
+
+.mdv-body ::highlight(mdv-search-current) {
+  background-color: var(--mdv-accent);
+  color: var(--mdv-on-accent);
+}
+
+/* ==========================================================================
+   2. Panel
+
+   Fixed, so the shell's flex row never lays it out: an absolutely positioned
+   child of a flex container is not a flex item, which is the only reason
+   `.mdv > :not(nav) { flex: 1 1 auto }` in viewer.css does not stretch this
+   panel into a second column beside the document.
+
+   Parked below the toolbar rather than beside it, so however many buttons the
+   toolbar grows the two can never collide.
+   ========================================================================== */
+
+.mdv-search {
+  position: fixed;
+  top: 3.35rem;
+  right: 0.6rem;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  width: min(25rem, calc(100vw - 1.2rem));
+  max-height: min(60vh, 34rem);
+  border: 1px solid var(--mdv-border-strong);
+  border-radius: var(--mdv-radius);
+  background-color: var(--mdv-surface);
+  color: var(--mdv-fg);
+  font-family: var(--mdv-font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  box-shadow: 0 6px 24px -8px rgb(0 0 0 / 0.35);
+  overflow: hidden;
+}
+
+/* ==========================================================================
+   3. Query row
+   ========================================================================== */
+
+.mdv-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: none;
+  padding: 0.4rem 0.45rem;
+}
+
+.mdv-search-icon {
+  flex: none;
+  display: block;
+  margin-left: 0.15rem;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-search-field {
+  font: inherit;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0.3rem 0.1rem;
+  border: 0;
+  background: none;
+  color: var(--mdv-fg);
+}
+
+.mdv-search-field::placeholder {
+  color: var(--mdv-fg-muted);
+}
+
+/* The field is the whole row visually, so its ring would crop against the
+   panel edge; the row itself is what lights up instead. */
+.mdv-search-field:focus {
+  outline: none;
+}
+
+.mdv-search-bar:focus-within {
+  box-shadow: inset 0 0 0 1px var(--mdv-accent);
+  border-radius: var(--mdv-radius-sm);
+}
+
+.mdv-search-count {
+  flex: none;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--mdv-fg-muted);
+  white-space: nowrap;
+}
+
+.mdv-search-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  flex: none;
+}
+
+.mdv-search-button,
+.mdv-search-toggle {
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.65rem;
+  height: 1.65rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--mdv-radius-sm);
+  background: none;
+  color: var(--mdv-fg-muted);
+  cursor: pointer;
+  transition: background-color var(--mdv-dur) ease, color var(--mdv-dur) ease;
+}
+
+.mdv-search-toggle {
+  width: auto;
+  min-width: 1.65rem;
+  padding-inline: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.mdv-search-button:hover,
+.mdv-search-toggle:hover {
+  background-color: var(--mdv-bg);
+  color: var(--mdv-fg);
+}
+
+.mdv-search-toggle[aria-pressed='true'] {
+  background-color: var(--mdv-accent);
+  color: var(--mdv-on-accent);
+}
+
+.mdv-search-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mdv-search-button:disabled:hover {
+  background: none;
+  color: var(--mdv-fg-muted);
+}
+
+/* ==========================================================================
+   4. Results, grouped by section
+
+   The grouping is the point of the panel: a match is worth far more when you
+   can see which section it landed in, which is the one thing the browser's own
+   find bar cannot tell you.
+   ========================================================================== */
+
+.mdv-search-results {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 0.25rem;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--mdv-scrollbar) transparent;
+}
+
+.mdv-search-results:not(:empty) {
+  border-top: 1px solid var(--mdv-border);
+}
+
+.mdv-search-results::-webkit-scrollbar {
+  width: 9px;
+}
+
+.mdv-search-results::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mdv-search-results::-webkit-scrollbar-thumb {
+  background-color: var(--mdv-scrollbar);
+  border-radius: 5px;
+}
+
+.mdv-search-group {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Sticky, so the section a result belongs to is still on screen after you have
+   scrolled a long run of matches inside it. */
+.mdv-search-section {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.4rem 0.6rem 0.25rem;
+  background-color: var(--mdv-surface);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-search-section-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdv-search-section-count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.mdv-search-result {
+  padding: 0.28rem 0.6rem;
+  border-left: 2px solid transparent;
+  color: var(--mdv-fg-muted);
+  cursor: pointer;
+}
+
+.mdv-search-result:hover {
+  background-color: var(--mdv-bg);
+}
+
+.mdv-search-result[aria-selected='true'] {
+  border-left-color: var(--mdv-accent);
+  background-color: var(--mdv-bg);
+  color: var(--mdv-fg);
+}
+
+/* One line per result: a wrapped snippet turns the list into a wall of prose
+   and costs the scan speed the list exists for. */
+.mdv-search-context {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdv-search-hit {
+  border-radius: var(--mdv-radius-sm);
+  padding: 0 0.1em;
+  background-color: var(--mdv-mark-bg);
+  color: var(--mdv-fg);
+  font-weight: 650;
+}
+
+.mdv-search-result[aria-selected='true'] .mdv-search-hit {
+  background-color: var(--mdv-accent);
+  color: var(--mdv-on-accent);
+}
+
+/* ==========================================================================
+   5. Notes and announcements
+   ========================================================================== */
+
+.mdv-search-note {
+  flex: none;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  border-top: 1px solid var(--mdv-border);
+  font-size: 0.7rem;
+  color: var(--mdv-fg-muted);
+}
+
+/* Announced, never seen — the visible count says the same thing without
+   interrupting anyone. */
+.mdv-search-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+   6. Viewport, motion and print
+   ========================================================================== */
+
+/* On a phone-width window the panel is the width of the screen, so it drops the
+   floating card treatment and sits flush across the top. */
+@media (max-width: 30rem) {
+  .mdv-search {
+    top: 0;
+    right: 0;
+    left: 0;
+    width: auto;
+    max-height: 70vh;
+    border-width: 0 0 1px;
+    border-radius: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-search-button,
+  .mdv-search-toggle {
+    transition: none;
+  }
+}
+
+/* The printed page is the document alone. The root also carries
+   `data-mdv-chrome`, which is what viewer.css keys its own print rule off. */
+@media print {
+  .mdv-search {
+    display: none !important;
+  }
+}

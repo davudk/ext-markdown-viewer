@@ -14,6 +14,7 @@
 
 import type { Config as PurifyConfig } from 'dompurify';
 import type { MarkedExtension } from 'marked';
+import type { MarkedKatexOptions } from 'marked-katex-extension';
 
 /* -------------------------------------------------------------------------- */
 /* Activation                                                                  */
@@ -110,7 +111,20 @@ export const SHORTCUTS = {
   toggleToc: 't',
   toggleRaw: 'r',
   cycleTheme: 'd',
+  /** Also bound to ctrl/cmd+F, which the search panel takes over deliberately. */
+  search: '/',
 } as const;
+
+/** Export formats. Both are produced client-side; nothing is uploaded. */
+export const EXPORT_FORMATS = [
+  { value: 'html', label: 'HTML', extension: '.html' },
+  { value: 'docx', label: 'Word', extension: '.docx' },
+] as const;
+
+export type ExportFormat = (typeof EXPORT_FORMATS)[number]['value'];
+
+/** How many search matches to mark before giving up on a pathological query. */
+export const SEARCH_MATCH_LIMIT = 2000;
 
 /* -------------------------------------------------------------------------- */
 /* Build output                                                                */
@@ -136,6 +150,33 @@ export const RENDERER_JS = 'renderer.js';
  */
 export const RENDERER_CSS_FILES = ['assets/viewer.css', 'assets/renderer.css'];
 
+/**
+ * Heavy features, injected only into documents that actually use them.
+ *
+ * Mermaid alone is larger than everything else in the extension combined, and
+ * most markdown contains no diagrams at all. Rather than pay that on every
+ * page, the renderer detects the relevant blocks and asks the service worker to
+ * inject the matching add-on — the same `chrome.scripting` path the popup
+ * already uses, so no dynamic `import()` and no web-accessible chunks are
+ * involved.
+ *
+ * Each add-on operates on the DOM directly; it is not part of the React tree.
+ */
+export const ADDONS = {
+  mermaid: { js: 'mermaid-addon.js', css: [] as string[] },
+  // The stylesheet cannot be named `katex-addon.css`: WXT treats every file in
+  // entrypoints/ as an entrypoint and refuses two with the same base name.
+  katex: { js: 'katex-addon.js', css: ['assets/katex-theme.css'] },
+} as const;
+
+export type AddonName = keyof typeof ADDONS;
+
+/** Marks a code block the mermaid add-on should replace with a diagram. */
+export const MERMAID_LANGUAGE = 'mermaid';
+
+/** Class the KaTeX extension puts on math it has rendered. */
+export const MATH_CLASS = 'katex';
+
 /* -------------------------------------------------------------------------- */
 /* Permissions                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -149,8 +190,18 @@ export const ALL_SITES = '*://*/*';
  */
 export const CONTENT_SCRIPT_ID = 'markdown-auto';
 
-/** Permissions declared in the manifest, asserted against the build output. */
-export const REQUIRED_PERMISSIONS = ['storage', 'activeTab', 'scripting'];
+/**
+ * Permissions declared in the manifest, asserted against the build output.
+ *
+ * `downloads` arrives with export: saving an HTML or DOCX file is the only
+ * thing that needs it, and it was deliberately left out until then.
+ */
+export const REQUIRED_PERMISSIONS = [
+  'storage',
+  'activeTab',
+  'scripting',
+  'downloads',
+];
 
 /* -------------------------------------------------------------------------- */
 /* Settings                                                                    */
@@ -180,6 +231,12 @@ export interface Settings {
   liveReload: boolean;
   /** Restore the previous scroll position when reopening a document. */
   rememberScroll: boolean;
+  /** Render ```mermaid blocks as diagrams. Costs an on-demand add-on injection. */
+  mermaid: boolean;
+  /** Render $inline$ and $$block$$ math with KaTeX. */
+  math: boolean;
+  /** Click an image to open it full-size with keyboard navigation. */
+  lightbox: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -191,6 +248,9 @@ export const DEFAULT_SETTINGS: Settings = {
   showToc: true,
   liveReload: false,
   rememberScroll: true,
+  mermaid: true,
+  math: true,
+  lightbox: true,
 };
 
 /**
@@ -288,11 +348,45 @@ export const HIGHLIGHT_EMPTY_LANG_CLASS = 'hljs';
  * sneak back in. Everything here only narrows or pins.
  */
 export const PURIFY_CONFIG: PurifyConfig = {
-  USE_PROFILES: { html: true },
+  // `mathMl` and `svg` are both here for KaTeX, which needs both halves of its
+  // output: the <math> tree screen readers actually read, and the inline <svg>
+  // that draws radicals and stretchy arrows — `\sqrt{x}` loses its surd
+  // entirely without it. Neither profile admits script, event handlers,
+  // <foreignObject> or <use>; they widen what may *appear*, not what may run.
+  USE_PROFILES: { html: true, mathMl: true, svg: true },
+  // The one deliberate hole in the MathML profile, reopened by hand. DOMPurify
+  // disallows this family because `<annotation-xml>` is an mXSS vector — it can
+  // carry HTML into the MathML namespace. Its two plain siblings cannot, and
+  // dropping them is not free: `KEEP_CONTENT` then hoists the raw TeX out of
+  // the discarded `<annotation>` and into `<math>` as loose text, which every
+  // screen reader reads aloud. `annotation-xml` stays disallowed.
+  ADD_TAGS: ['semantics', 'annotation'],
   ADD_ATTR: ['align', 'type', 'checked', 'disabled'],
   // Nothing in markdown output needs data-*; dropping them shrinks the surface
   // for attribute-based gadgets in whatever consumes the DOM later.
   ALLOW_DATA_ATTR: false,
   // A stylesheet from an untrusted .md could reposition or hide our own UI.
+  // Now that the SVG profile is on this also covers SVG's own `<style>`, which
+  // is the same hazard wearing a different namespace.
   FORBID_TAGS: ['style'],
+};
+
+/**
+ * KaTeX is handed TeX out of an untrusted .md, so every option here is a limit
+ * rather than a preference.
+ *
+ * `trust` is the load-bearing one and the reason it is pinned rather than left
+ * to its (identical) default: it is what keeps `\includegraphics` and `\href`
+ * disabled, and `\includegraphics` is a network request in TeX's clothing.
+ */
+export const KATEX_OPTIONS: MarkedKatexOptions = {
+  // A malformed formula must render as a legible error in place, not abort the
+  // parse and cost the reader the whole document.
+  throwOnError: false,
+  // The default, 'warn', puts a console line on screen for every questionable
+  // construct — that is feedback for an author, and we are not the author.
+  strict: 'ignore',
+  trust: false,
+  // Unbounded by default: `\rule{500em}{500em}` is a one-line layout bomb.
+  maxSize: 25,
 };

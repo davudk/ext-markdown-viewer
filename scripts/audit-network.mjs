@@ -10,8 +10,8 @@
  *            messages, XML namespaces). Printed every run rather than silently
  *            allowlisted, so a new one has to be looked at and classified.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { extname, join } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, extname, join } from 'node:path';
 
 const OUT = '.output/chrome-mv3';
 
@@ -24,6 +24,13 @@ const INERT_URLS = [
   ['https://react.dev/errors/', 'React minified-invariant help URL'],
   ['https://github.com/highlightjs/', 'highlight.js error and deprecation messages'],
   ['https://github.com/markedjs/', 'marked error messages'],
+  ['https://github.com/mermaid-js/', 'mermaid deprecation notice text'],
+  ['https://chevrotain.io/', "chevrotain lexer-error messages ('See ... for details')"],
+  ['https://github.com/chevrotain/', 'chevrotain bug-report links in error text'],
+  ['https://mermaid.js.org/', 'mermaid documentation links in error text'],
+  ['https://katex.org/', 'KaTeX error and documentation links'],
+  ['https://langium.org/', 'langium cyclic-dependency error message'],
+  ['https://en.wikipedia.org/', 'left-recursion explanation in a langium grammar error'],
 ];
 
 /**
@@ -55,16 +62,42 @@ const INERT_APIS = [
   ],
 ];
 
+/** CSS-only checks. Per-`url()` inspection is handled separately below. */
+const CSS_RULES = [[/@import\s+(?:url\()?\s*['"]?(?:https?:)?\/\//, 'remote stylesheet import']];
+
 /**
- * CSS-only checks. `@font-face` appears in JS as a highlight.js grammar keyword
- * for highlighting CSS source, which loads nothing — but in an actual
- * stylesheet it means a webfont, so the check is scoped to where it matters.
+ * Every `url()` in a stylesheet, checked two ways.
+ *
+ * A blanket ban on `@font-face` was the original rule, and it was wrong: KaTeX
+ * ships its own woff2 files, and a font bundled *inside* the extension is a
+ * disk read, not a request. What actually matters is where the URL points — and,
+ * just as importantly, that a local one resolves to a file that exists, since a
+ * bundled font that failed to get copied produces no build error and no runtime
+ * error, only unreadable glyphs.
  */
-const CSS_RULES = [
-  [/@font-face/, 'webfont declaration'],
-  [/@import/, 'external stylesheet import'],
-  [/url\(\s*['"]?https?:/, 'remote resource in url()'],
-];
+function auditStylesheetUrls(file, text) {
+  const relative = file.slice(OUT.length + 1);
+
+  for (const [, raw] of text.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)) {
+    const url = raw.trim();
+
+    if (url.startsWith('data:')) continue;
+
+    if (/^(https?:)?\/\//.test(url)) {
+      failures.push(`${relative}: remote resource in url() — ${url}`);
+      continue;
+    }
+
+    // Extension-relative, so resolve it the way the browser will: against the
+    // stylesheet's own location inside the packed extension.
+    const resolved = join(dirname(file), url.split(/[?#]/)[0]);
+    if (!existsSync(resolved)) {
+      failures.push(
+        `${relative}: url() points at a file missing from the build — ${url}`,
+      );
+    }
+  }
+}
 
 function walk(dir) {
   return readdirSync(dir).flatMap((name) => {
@@ -76,12 +109,6 @@ function walk(dir) {
 const failures = [];
 const notices = [];
 
-/**
- * Every `fetch` call site in the source, checked against `FETCH_ALLOWLIST` in
- * lib/config.ts. This is the real guard on the network claim: the built bundle
- * cannot distinguish "re-reads the open document" from "phones home", but the
- * source can, and a new call site anywhere fails the build.
- */
 /**
  * Blanks out comments and string bodies so a call site is counted only where it
  * is actually code. Without this, a comment discussing `fetch(` inflates the
@@ -126,6 +153,12 @@ function stripCommentsAndStrings(source) {
   return out;
 }
 
+/**
+ * Every `fetch` call site in the source, checked against `FETCH_ALLOWLIST` in
+ * lib/config.ts. This is the real guard on the network claim: the built bundle
+ * cannot distinguish "re-reads the open document" from "phones home", but the
+ * source can, and a new call site anywhere fails the build.
+ */
 function auditFetchCallSites() {
   const config = readFileSync('lib/config.ts', 'utf8');
   const declared = config.match(/^export const FETCH_ALLOWLIST = \[([^\]]*)\];$/m);
@@ -180,6 +213,7 @@ for (const file of walk(OUT)) {
     for (const [pattern, label] of CSS_RULES) {
       if (pattern.test(text)) failures.push(`${file}: ${label}`);
     }
+    auditStylesheetUrls(file, text);
   }
 
   for (const url of new Set(text.match(/https?:\/\/[^\s'"`)\\]+/g) ?? [])) {

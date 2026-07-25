@@ -19,12 +19,15 @@ import { Marked, type Tokens } from 'marked';
 import { markedEmoji } from 'marked-emoji';
 import markedFootnote from 'marked-footnote';
 import { markedHighlight } from 'marked-highlight';
+import markedKatex from 'marked-katex-extension';
 import { search as searchEmoji } from 'node-emoji';
 
 import {
   HIGHLIGHT_EMPTY_LANG_CLASS,
   HIGHLIGHT_LANG_PREFIX,
+  KATEX_OPTIONS,
   MARKED_OPTIONS,
+  MERMAID_LANGUAGE,
   PURIFY_CONFIG,
   TOC_LEVELS,
 } from './config.ts';
@@ -87,9 +90,16 @@ function createParser() {
       emptyLangClass: HIGHLIGHT_EMPTY_LANG_CLASS,
 
       highlight(code, lang) {
-        // An unregistered tag (```mermaid, ```console, a typo) is common and
-        // must not throw. Returning `code` unchanged leaves marked's own
-        // escaping in charge, which is what we want for untokenized text.
+        // The mermaid add-on reads this block's text back out and feeds it to a
+        // parser, so it has to survive as characters. hljs has no mermaid
+        // grammar today and the branch below would already pass it through —
+        // this is the explicit version, so registering one later cannot quietly
+        // shred every diagram into token spans.
+        if (lang === MERMAID_LANGUAGE) return code;
+
+        // An unregistered tag (```console, a typo) is common and must not
+        // throw. Returning `code` unchanged leaves marked's own escaping in
+        // charge, which is what we want for untokenized text.
         if (!lang || !hljs.getLanguage(lang)) return code;
 
         try {
@@ -101,6 +111,12 @@ function createParser() {
     }),
     markedFootnote(),
     emojiExtension,
+    // Math is resolved at parse time, not by the add-on: both of its tokenizers
+    // only match a `$` in the *first* position of what is left to tokenize, so
+    // marked's own codespan and fence rules claim `` `$x$` `` and ```` ```$$ ````
+    // blocks first and the TeX inside them is never seen. A DOM pass over the
+    // rendered document afterwards would have no such structure to go on.
+    markedKatex(KATEX_OPTIONS),
     MARKED_OPTIONS,
     {
       renderer: {

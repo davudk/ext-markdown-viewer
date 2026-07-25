@@ -1,6 +1,17 @@
-import { CONTENT_SCRIPT_ID, RENDERER_CSS_FILES, RENDERER_JS } from '@/lib/config';
+import {
+  ADDONS,
+  CONTENT_SCRIPT_ID,
+  RENDERER_CSS_FILES,
+  RENDERER_JS,
+  type AddonName,
+} from '@/lib/config';
 import { expandOrigin, fileMatchPatterns, hasFileAccess } from '@/lib/permissions';
-import type { Message, RenderTabResult, SyncResult } from '@/lib/messages';
+import type {
+  AddonResult,
+  Message,
+  RenderTabResult,
+  SyncResult,
+} from '@/lib/messages';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -69,6 +80,37 @@ async function renderTab(tabId: number): Promise<RenderTabResult> {
   }
 }
 
+/**
+ * Injects an optional feature into the tab that asked for it.
+ *
+ * The tab id comes from the sender, never from the message. A renderer runs
+ * inside an untrusted page, so letting the message name its own target would
+ * let a document push a script into a tab it has no business touching.
+ *
+ * `ADDONS` is a fixed table and `addon` is looked up in it rather than
+ * concatenated into a path, so nothing from the page reaches the file name.
+ */
+async function injectAddon(
+  addon: AddonName,
+  sender: chrome.runtime.MessageSender,
+): Promise<AddonResult> {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined) return { ok: false, error: 'no sender tab' };
+
+  const entry = ADDONS[addon];
+  if (!entry) return { ok: false, error: `unknown add-on: ${addon}` };
+
+  try {
+    if (entry.css.length > 0) {
+      await chrome.scripting.insertCSS({ target: { tabId }, files: [...entry.css] });
+    }
+    await chrome.scripting.executeScript({ target: { tabId }, files: [entry.js] });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
 /** Lifecycle-triggered sync: no caller is listening, so failures only get logged. */
 function resync(): void {
   void syncRegistrations().catch((error) => {
@@ -78,10 +120,14 @@ function resync(): void {
 
 export default defineBackground(() => {
   chrome.runtime.onMessage.addListener(
-    (message: Message, _sender, sendResponse) => {
+    (message: Message, sender, sendResponse) => {
       switch (message.type) {
         case 'RENDER_TAB':
           renderTab(message.tabId).then(sendResponse);
+          return true;
+
+        case 'INJECT_ADDON':
+          injectAddon(message.addon, sender).then(sendResponse);
           return true;
 
         case 'SYNC_REGISTRATIONS':

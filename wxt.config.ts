@@ -9,7 +9,7 @@ export default defineConfig({
     // No host permissions at install time. `activeTab` covers click-to-render
     // on the current tab, and anything persistent is requested per-origin at
     // runtime out of `optional_host_permissions`.
-    permissions: ['storage', 'activeTab', 'scripting'],
+    permissions: ['storage', 'activeTab', 'scripting', 'downloads'],
     optional_host_permissions: ['*://*/*'],
   },
   vite: () => ({
