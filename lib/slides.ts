@@ -13,7 +13,20 @@
  * requested. The HTML arriving here has already been through DOMPurify.
  */
 
-import type { SlideSplit } from './config.ts';
+/**
+ * Where one slide is cut from the next.
+ *
+ * `auto` prefers `rule` and falls back to `heading`: almost no README carries a
+ * single `---`, and presenting one as a wall of text is a worse answer than
+ * cutting at its section headings, while a document that *does* carry rules was
+ * written with the breaks exactly where the author wanted them.
+ *
+ * Declared here rather than in `lib/config.ts` because it is the argument
+ * `splitSlides` takes; the presentation plugin's settings schema offers the same
+ * three values, and `SettingsOf` makes a drift between the two a compile error
+ * at the call site.
+ */
+export type SlideSplit = 'auto' | 'rule' | 'heading';
 
 export interface Slide {
   /** The slide's markup, ready to be injected into a `.mdv-body` container. */

@@ -26,13 +26,40 @@ import hljs from 'highlight.js/lib/common';
 import {
   ADDON_READY_TIMEOUT_MS,
   DIFF_BRIDGE_KEY,
-  DIFF_CONTEXT_LINES,
-  DIFF_HIGHLIGHT_LANGUAGE,
-  DIFF_MAX_LINES,
-  DIFF_MIN_COLLAPSE_LINES,
   DIFF_READY_EVENT,
 } from './config.ts';
 import { sendMessage, type AddonResult } from './messages.ts';
+
+/* -------------------------------------------------------------------------- */
+/* What the comparison will and will not do                                    */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * These four are read here and nowhere else. The bridge key and the ready event
+ * above stay in `lib/config.ts` because they are a contract with
+ * `entrypoints/diff-addon.ts`, which is a different bundle; a fold width is not.
+ */
+
+/** Unchanged lines kept either side of a change before the run is folded away. */
+export const DIFF_CONTEXT_LINES = 3;
+
+/**
+ * A run shorter than this is left alone: folding it away would replace four
+ * rows with one row plus a gap marker, which is not a saving.
+ */
+export const DIFF_MIN_COLLAPSE_LINES = 9;
+
+/**
+ * Lines per file above which the comparison refuses rather than tries.
+ *
+ * jsdiff is O(nd) and every row is real DOM; a pair of generated files can be
+ * tens of thousands of lines each, and a comparison that locks the tab for a
+ * minute is worse than one that says up front it will not run.
+ */
+export const DIFF_MAX_LINES = 20_000;
+
+/** The markdown source is highlighted as markdown, so a diff still reads as one. */
+export const DIFF_HIGHLIGHT_LANGUAGE = 'markdown';
 
 /* -------------------------------------------------------------------------- */
 /* The engine contract                                                         */

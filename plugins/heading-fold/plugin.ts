@@ -25,8 +25,17 @@
  * sections silently absent is indistinguishable from a broken one.
  */
 
-import { FOLD_LEVELS, VIEWER_ROOT_ID } from '../../lib/config.ts';
+import { VIEWER_ROOT_ID } from '../../lib/config.ts';
 import { PLUGIN_API_VERSION, type Plugin, type Teardown } from '../../lib/plugins/types.ts';
+
+/**
+ * Heading levels that get a fold control.
+ *
+ * All six rather than `TOC_LEVELS`: an `h5` still owns the paragraphs under it,
+ * and a section that cannot be collapsed because it is too deep to appear in
+ * the sidebar would be arbitrary.
+ */
+export const FOLD_LEVELS = [1, 2, 3, 4, 5, 6];
 
 export const HEADING_FOLD_PLUGIN_ID = 'heading-fold';
 

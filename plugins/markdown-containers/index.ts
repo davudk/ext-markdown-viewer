@@ -21,7 +21,29 @@ import type MarkdownIt from 'markdown-it';
 import type Token from 'markdown-it/lib/token.mjs';
 
 import { alertOpen } from '../../lib/alerts.ts';
-import { CONTAINER_TYPES } from '../../lib/config.ts';
+import type { AlertKind } from '../../lib/config.ts';
+
+/**
+ * `:::name` containers, as MkDocs, Docusaurus and VitePress spell them.
+ *
+ * Each maps onto one of the five alert kinds rather than introducing a palette
+ * of its own: `:::danger` and `> [!CAUTION]` mean the same thing to a reader,
+ * and a document that uses both should not look like it uses two systems. The
+ * title is what appears when the author writes no title of their own.
+ */
+export const CONTAINER_TYPES: ReadonlyArray<{
+  name: string;
+  title: string;
+  kind: AlertKind;
+}> = [
+  { name: 'note', title: 'Note', kind: 'note' },
+  { name: 'info', title: 'Info', kind: 'note' },
+  { name: 'tip', title: 'Tip', kind: 'tip' },
+  { name: 'important', title: 'Important', kind: 'important' },
+  { name: 'warning', title: 'Warning', kind: 'warning' },
+  { name: 'caution', title: 'Caution', kind: 'caution' },
+  { name: 'danger', title: 'Danger', kind: 'caution' },
+];
 import { PLUGIN_API_VERSION, type Plugin } from '../../lib/plugins/types.ts';
 
 export const markdownContainersPlugin: Plugin = {

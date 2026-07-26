@@ -19,7 +19,27 @@
 import multimdTable from 'markdown-it-multimd-table';
 import type MarkdownIt from 'markdown-it';
 
-import { MULTIMD_TABLE_OPTIONS } from '../../lib/config.ts';
+/**
+ * MultiMarkdown table extensions. Only the ones that are strict supersets of
+ * GFM are on, so a table that parsed before parses identically now.
+ *
+ * `multibody` is off because it is not a superset, and the way it fails is
+ * silent: it treats a blank line inside a table as a `<tbody>` break, which
+ * means two ordinary GFM tables written back to back become one table whose
+ * second header row renders as a row of literal `---` cells. Two tables in a
+ * row is far commoner in a README than multiple row groups in one.
+ *
+ * `autolabel` is off for a duller reason: it mints an `id` on every captioned
+ * table out of the caption text, in the same namespace as the heading slugs,
+ * and nothing in the viewer links to a table.
+ */
+export const MULTIMD_TABLE_OPTIONS = {
+  multiline: true,
+  rowspan: true,
+  headerless: true,
+  multibody: false,
+  autolabel: false,
+};
 import { PLUGIN_API_VERSION, type Plugin } from '../../lib/plugins/types.ts';
 
 export const markdownTablesPlugin: Plugin = {

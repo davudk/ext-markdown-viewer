@@ -20,9 +20,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { SEARCH_REGEX_BUDGET_MS, SEARCH_RESULT_LIMIT } from '../lib/config.ts';
 import {
   breadcrumbAt,
+  SEARCH_REGEX_BUDGET_MS,
+  SEARCH_RESULT_LIMIT,
   compilePattern,
   createCache,
   escapeRegExp,

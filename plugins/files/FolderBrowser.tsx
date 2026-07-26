@@ -12,10 +12,19 @@ import {
 
 import {
   createMatcher,
+  FILTER_RESULT_LIMIT,
   type FuzzyField,
   type PaletteFile,
 } from '../../lib/commands.ts';
-import { CONTEXT_MENU_KEYS, FILTER_RESULT_LIMIT } from '../../lib/config.ts';
+
+/**
+ * Keys that open a row's menu in the folder tree, alongside right-click.
+ *
+ * `ContextMenu` and Shift-F10 are what the platform already binds. `c` is here
+ * because a Mac keyboard has neither, and a menu only a mouse can open is a
+ * menu a good number of readers do not have.
+ */
+export const CONTEXT_MENU_KEYS = ['ContextMenu', 'F10', 'c'];
 import type { CompareRequest } from '../../lib/diff.ts';
 import {
   fileUrlFor,

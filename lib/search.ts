@@ -20,8 +20,85 @@
  * It imports nothing, `lib/config.ts` included. That is not purity for its own
  * sake: this file is bundled *into* the worker, and one import of the config
  * module dragged every theme palette in the extension into the worker's blob
- * along with it. Limits arrive as arguments instead.
+ * along with it. Limits arrive as arguments instead — and the values callers
+ * pass are declared below, so that no caller has to reach for config either.
  */
+
+/* -------------------------------------------------------------------------- */
+/* Limits                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * The limits and cache keys search runs under, held here rather than in
+ * `lib/config.ts` for the reason the header gives: this module is bundled into
+ * the worker, and importing the config module dragged every theme palette in
+ * the extension into the worker's blob. Declaring them here costs the worker
+ * nothing — they are numbers in a module it already contains — and it puts them
+ * next to the code that has to explain them. `searchDocument` still takes its
+ * limit and budget as arguments; these are the values callers pass.
+ */
+
+/** How many search matches to mark before giving up on a pathological query. */
+export const SEARCH_MATCH_LIMIT = 2000;
+
+/**
+ * How many rows the sidebar's result list will build before it stops counting.
+ *
+ * Lower than SEARCH_MATCH_LIMIT because these are not the same object. A quick
+ * find match is a painted range and a number in a counter; a panel result is a
+ * row carrying a breadcrumb, a line number and a snippet, and a thousand of
+ * those already outlasts anybody's willingness to scroll them. The panel says so
+ * rather than silently stopping.
+ */
+export const SEARCH_RESULT_LIMIT = 1000;
+
+/** Files a folder-wide search will read before it reports the rest unsearched. */
+export const SEARCH_FILE_LIMIT = 2000;
+
+/**
+ * Keystroke settling time before a query is dispatched, in milliseconds.
+ *
+ * One search per pause, not one per keypress. Quick find uses a shorter one of
+ * its own — it is searching a document already in memory and the reader is
+ * watching the count move — while the panel may be about to read a thousand
+ * files off a disk.
+ */
+export const SEARCH_DEBOUNCE_MS = 150;
+
+/**
+ * How long one document may be scanned before the scan is abandoned.
+ *
+ * This is the ReDoS budget, and `lib/search.ts` is explicit about the half of
+ * the problem it can and cannot solve: the clock is only read between matches,
+ * so it catches a pattern that is slow *often* and not one that is catastrophic
+ * *once*. The second half is `lib/search-client.ts`, which can terminate a
+ * worker that has stopped answering — the only thing that actually stops a
+ * regular expression already running.
+ */
+export const SEARCH_REGEX_BUDGET_MS = 50;
+
+/**
+ * How long the client waits for a worker to answer before writing it off.
+ *
+ * Generous next to the budget above, because it has to cover a genuinely large
+ * document as well as a wedged one, and terminating a worker that was merely
+ * busy costs the reader a repeated search.
+ */
+export const SEARCH_WORKER_TIMEOUT_MS = 3000;
+
+/**
+ * Keys the worker caches documents under.
+ *
+ * Two, because the two halves of search read two different texts and both are
+ * "this document". Quick find searches what is *rendered* — the text extracted
+ * from the DOM, which is what it can paint ranges over. The panel searches the
+ * markdown *source*, because a line number is a fact about a file and not about
+ * a rendered tree. Files pulled out of a folder are keyed by their path under
+ * the third prefix, which is what keeps a file called `source` from evicting it.
+ */
+export const SEARCH_DOCUMENT_KEY = 'rendered';
+export const SEARCH_SOURCE_KEY = 'source';
+export const SEARCH_FILE_KEY_PREFIX = 'file:';
 
 /* -------------------------------------------------------------------------- */
 /* What a search is                                                            */

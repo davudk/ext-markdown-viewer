@@ -30,6 +30,7 @@ import {
   serializeSettings,
   settingsFilename,
   type ImportOk,
+  type PluginSchemas,
 } from '../lib/settings-io.ts';
 
 /* -------------------------------------------------------------------------- */
@@ -86,8 +87,6 @@ const CUSTOM: Settings = {
   fontSize: 19,
   lineHeight: 1.85,
   contentWidth: 'wide',
-  showToc: false,
-  liveReload: true,
 };
 
 /* -------------------------------------------------------------------------- */
@@ -227,7 +226,7 @@ test('wrong types fall back to the default and are reported', () => {
         theme: 42,
         fontFamily: null,
         fontSize: 'sixteen',
-        showToc: 'true',
+        lineHeight: 'tall',
         contentWidth: ['wide'],
         themePreset: 'dracula',
       }),
@@ -237,9 +236,7 @@ test('wrong types fall back to the default and are reported', () => {
   assert.equal(result.settings.theme, DEFAULT_SETTINGS.theme);
   assert.equal(result.settings.fontFamily, DEFAULT_SETTINGS.fontFamily);
   assert.equal(result.settings.fontSize, DEFAULT_SETTINGS.fontSize);
-  // Not truthiness: `"true"` is what a hand-edited file contains when someone
-  // meant on, and guessing is worse than refusing.
-  assert.equal(result.settings.showToc, DEFAULT_SETTINGS.showToc);
+  assert.equal(result.settings.lineHeight, DEFAULT_SETTINGS.lineHeight);
   assert.equal(result.settings.contentWidth, DEFAULT_SETTINGS.contentWidth);
   // A preset id from another extension is a string of the right type and still
   // not a preset.
@@ -404,4 +401,157 @@ test('a newer file is read as far as it can be, and says so', () => {
   // A future file is expected to disagree about which settings exist, so the
   // "not in the file" note is suppressed rather than listing half of them.
   assert.ok(!result.notes.some((note) => /Not in the file/.test(note)));
+});
+
+/* -------------------------------------------------------------------------- */
+/* Plugin settings                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Two plugins' worth of schema, standing in for the registry.
+ *
+ * Deliberately hand-written rather than imported from `lib/plugins/index.ts`:
+ * the registry reaches JSX and this runner cannot load it, and the point of the
+ * schemas being an argument is that import validates whatever it is handed.
+ * `quiet` has no settings at all — the case that separates "a plugin this build
+ * knows, whose enabled flag may be imported" from one it has never heard of.
+ */
+const SCHEMAS = {
+  outline: {
+    depth: { type: 'number', default: 3, min: 1, max: 6, label: 'Depth' },
+    label: { type: 'string', default: '', maxLength: 8, label: 'Label' },
+    mode: {
+      type: 'enum',
+      default: 'tree',
+      options: [
+        { value: 'tree', label: 'Tree' },
+        { value: 'flat', label: 'Flat' },
+      ],
+      label: 'Mode',
+    },
+  },
+  quiet: undefined,
+} as const satisfies PluginSchemas;
+
+/** A file carrying both halves. */
+function withPlugins(plugins: unknown, settings: unknown = DEFAULT_SETTINGS): string {
+  return JSON.stringify({
+    format: SETTINGS_FILE_FORMAT,
+    version: SETTINGS_FILE_VERSION,
+    exportedAt: '2026-07-25T00:00:00.000Z',
+    settings,
+    plugins,
+  });
+}
+
+test('a plugin bag round trips through its own schema', () => {
+  const bags = { outline: { enabled: false, depth: 5, mode: 'flat' } };
+  const text = serializeSettings(DEFAULT_SETTINGS, new Date(), bags);
+  const result = ok(parseSettingsFile(text, SCHEMAS));
+
+  assert.deepEqual(result.plugins.outline, { enabled: false, depth: 5, mode: 'flat' });
+  assert.deepEqual(result.notes, []);
+});
+
+test('a file with no plugins section says nothing about plugins', () => {
+  // Absent is not "reset": a plugin the file never mentions has to keep the
+  // settings the reader already has, exactly as a missing global setting does.
+  const result = ok(parseSettingsFile(serializeSettings(DEFAULT_SETTINGS), SCHEMAS));
+  assert.deepEqual(Object.keys(result.plugins), []);
+  assert.ok(!Object.hasOwn(buildSettingsFile(DEFAULT_SETTINGS), 'plugins'));
+});
+
+test('a plugin this build does not have is reported by name and dropped', () => {
+  const result = ok(
+    parseSettingsFile(withPlugins({ telemetry: { enabled: true }, outline: {} }), SCHEMAS),
+  );
+
+  assert.ok(!Object.hasOwn(result.plugins, 'telemetry'));
+  assert.ok(Object.hasOwn(result.plugins, 'outline'));
+  assert.ok(result.notes.some((note) => note.includes('telemetry')));
+});
+
+test("a key the plugin does not declare cannot reach its bag", () => {
+  const result = ok(
+    parseSettingsFile(withPlugins({ outline: { depth: 2, endpoint: 'https://x.example' } }), SCHEMAS),
+  );
+
+  assert.deepEqual(result.plugins.outline, { depth: 2 });
+  // Named as `id.key`, so "which plugin" is answerable from the note alone.
+  assert.ok(result.notes.some((note) => note.includes('outline.endpoint')));
+});
+
+test('a plugin with no settings can still have its enabled flag imported', () => {
+  const result = ok(parseSettingsFile(withPlugins({ quiet: { enabled: false } }), SCHEMAS));
+  assert.deepEqual(result.plugins.quiet, { enabled: false });
+});
+
+test('plugin numbers are clamped and plugin strings are capped', () => {
+  const result = ok(
+    parseSettingsFile(withPlugins({ outline: { depth: 99, label: 'x'.repeat(40) } }), SCHEMAS),
+  );
+
+  assert.equal(result.plugins.outline.depth, 6);
+  assert.equal((result.plugins.outline.label as string).length, 8);
+  assert.ok(result.notes.some((note) => /allowed range/.test(note)));
+});
+
+test('a plugin value of the wrong kind is dropped, not defaulted in silence', () => {
+  const result = ok(
+    parseSettingsFile(
+      withPlugins({ outline: { depth: 'three', mode: 'spiral', enabled: 'yes' } }),
+      SCHEMAS,
+    ),
+  );
+
+  // Dropped rather than written as the default: the file did not ask for the
+  // default, and a bag with no key leaves whatever is stored alone.
+  assert.deepEqual(result.plugins.outline, {});
+  assert.ok(result.notes.some((note) => /wrong kind/.test(note)));
+  assert.ok(result.notes.some((note) => note.includes('outline.enabled')));
+});
+
+test('with no schemas at all, every plugin in the file is reported unrecognised', () => {
+  const result = ok(parseSettingsFile(withPlugins({ outline: { depth: 2 } })));
+  assert.deepEqual(Object.keys(result.plugins), []);
+  assert.ok(result.notes.some((note) => note.includes('outline')));
+});
+
+test('a __proto__ plugin id pollutes nothing', () => {
+  // The plugin id comes out of the file, so `plugins.__proto__` is a key an
+  // attacker controls. It is not a plugin this build knows, so it is dropped —
+  // and the bag it would have landed in has a null prototype regardless.
+  const text =
+    `{"format":"${SETTINGS_FILE_FORMAT}","version":1,"settings":{},` +
+    `"plugins":{"__proto__":{"polluted":"yes"},"outline":{"depth":2}}}`;
+
+  const result = ok(parseSettingsFile(text, SCHEMAS));
+
+  assert.equal(({} as Record<string, unknown>).polluted, undefined);
+  assert.equal(Object.getPrototypeOf(result.plugins), null);
+  assert.deepEqual(result.plugins.outline, { depth: 2 });
+});
+
+test('a plugins section that is not an object is ignored, not fatal', () => {
+  for (const plugins of [null, 'outline', 42, ['outline']]) {
+    const result = ok(parseSettingsFile(withPlugins(plugins), SCHEMAS));
+    assert.deepEqual(Object.keys(result.plugins), []);
+  }
+});
+
+test('importing merges plugin bags rather than replacing them', () => {
+  // The stored shape, as the host writes it.
+  data.pluginSettings = {
+    version: 1,
+    global: {},
+    plugins: { outline: { depth: 4 }, quiet: { enabled: true } },
+  };
+
+  return importSettings(withPlugins({ outline: { mode: 'flat' } }), SCHEMAS).then((result) => {
+    assert.ok(result.ok);
+    const stored = data.pluginSettings as { plugins: Record<string, unknown> };
+    // `depth` was not in the file, so it survives; `mode` is added.
+    assert.deepEqual(stored.plugins.outline, { depth: 4, mode: 'flat' });
+    assert.deepEqual(stored.plugins.quiet, { enabled: true });
+  });
 });

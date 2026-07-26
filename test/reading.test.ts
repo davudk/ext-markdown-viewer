@@ -13,11 +13,9 @@ import { test } from 'node:test';
 import { JSDOM } from 'jsdom';
 
 import {
+  collectProse,
   READING_CJK_PER_MINUTE,
   READING_WORDS_PER_MINUTE,
-} from '../lib/config.ts';
-import {
-  collectProse,
   measureText,
   readingMinutes,
   readingStats,

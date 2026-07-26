@@ -12,7 +12,6 @@ import {
 // the theme surface. These are static tables, not behaviour — see config.ts.
 import {
   CUSTOM_CSS_MAX_LENGTH,
-  DOCUMENT_STATE_LIMIT,
   DOCUMENT_THEME_LIMIT,
   CONTENT_WIDTH_CH,
   CONTENT_WIDTH_OPTIONS,
@@ -24,6 +23,7 @@ import {
   VIEWER_CSS_VARS,
 } from '@/lib/config';
 import { sendMessage, type SyncResult } from '@/lib/messages';
+import { readPluginFailures, type PluginFailures } from '@/lib/plugin-failures';
 import {
   exportSettings,
   importSettings,
@@ -60,6 +60,26 @@ import {
   type Settings,
   type Theme,
 } from '@/lib/settings';
+import {
+  Message,
+  Segmented,
+  Skeleton,
+  Slider,
+  Switch,
+  Unavailable,
+  type Notice,
+} from './controls';
+import { PluginSection } from './PluginSection';
+import {
+  emptySettings,
+  onPluginSettingsChanged,
+  PLUGINS,
+  readPluginSettings,
+  withEnabled,
+  withSetting,
+  writePluginSettings,
+  type StoredSettings,
+} from './plugins';
 import './App.css';
 
 /**
@@ -86,25 +106,18 @@ type State =
   | { kind: 'ready'; access: Access };
 
 /** Which section a message belongs under, so it lands next to its control. */
-type Section =
-  | 'rendering'
-  | 'files'
-  | 'sites'
-  | 'reading'
-  | 'behaviour'
-  | 'css'
-  | 'pins'
-  | 'backup';
+type Section = 'rendering' | 'files' | 'sites' | 'general' | 'pins' | 'backup';
 
 /**
- * The typography settings this section owns. Named as a subset so the reset
- * button and the storage mirror both stay in step with it automatically —
- * `liveReload` and `rememberScroll` belong to another section and must not be
- * touched by anything here.
+ * The global settings this page owns outright.
+ *
+ * Typography describes the document rather than any one feature, so it is not
+ * a plugin's to declare — every generated section below comes from a plugin's
+ * own schema, and these have no plugin to come from.
  */
 type Reading = Pick<
   Settings,
-  'fontFamily' | 'fontSize' | 'lineHeight' | 'contentWidth' | 'showToc'
+  'fontFamily' | 'fontSize' | 'lineHeight' | 'contentWidth'
 >;
 
 function pickReading(settings: Settings): Reading {
@@ -113,27 +126,10 @@ function pickReading(settings: Settings): Reading {
     fontSize: settings.fontSize,
     lineHeight: settings.lineHeight,
     contentWidth: settings.contentWidth,
-    showToc: settings.showToc,
   };
 }
 
 const READING_DEFAULTS: Reading = pickReading(DEFAULT_SETTINGS);
-
-/**
- * The two settings that change what the viewer *does* rather than how it looks.
- * Both are plain switches, so unlike the typography sliders there is nothing to
- * debounce — each flip is a single deliberate write.
- */
-type Behaviour = Pick<Settings, 'liveReload' | 'rememberScroll'>;
-
-function pickBehaviour(settings: Settings): Behaviour {
-  return {
-    liveReload: settings.liveReload,
-    rememberScroll: settings.rememberScroll,
-  };
-}
-
-const BEHAVIOUR_DEFAULTS: Behaviour = pickBehaviour(DEFAULT_SETTINGS);
 
 /**
  * Every token of a palette as inline custom properties, so the preview below is
@@ -206,8 +202,6 @@ function previewVars(reading: Reading): CSSProperties {
     [VIEWER_CSS_VARS.contentWidth]: CONTENT_WIDTH_CH[reading.contentWidth],
   } as CSSProperties;
 }
-
-type Notice = { tone: 'ok' | 'info' | 'error'; text: string };
 
 /** At most one operation at a time, and the UI needs to know which. */
 type Busy =
@@ -342,115 +336,6 @@ function MarkIcon() {
   );
 }
 
-/** A live region that is always in the DOM, so async results get announced. */
-function Message({ notice }: { notice: Notice | null }) {
-  return (
-    <p
-      className={notice ? `msg is-${notice.tone}` : 'msg'}
-      role="status"
-      aria-live="polite"
-    >
-      {notice?.text ?? ''}
-    </p>
-  );
-}
-
-function Skeleton({ label }: { label: string }) {
-  return (
-    <div className="skeleton" role="status" aria-label={label}>
-      <span className="bar bar-a" />
-      <span className="bar bar-b" />
-    </div>
-  );
-}
-
-function Unavailable() {
-  return (
-    <p className="row-desc">
-      This page can't reach the extension right now. Reopen it from the
-      extension's toolbar icon.
-    </p>
-  );
-}
-
-function Switch({
-  on,
-  busy,
-  disabled,
-  labelledBy,
-  describedBy,
-  onChange,
-}: {
-  on: boolean;
-  busy: boolean;
-  disabled: boolean;
-  labelledBy: string;
-  describedBy: string;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      aria-labelledby={labelledBy}
-      aria-describedby={describedBy}
-      aria-busy={busy || undefined}
-      className="switch"
-      disabled={disabled}
-      onClick={() => onChange(!on)}
-    >
-      <span className="switch-thumb" />
-    </button>
-  );
-}
-
-/**
- * A labelled range with its value beside it.
- *
- * The `<output>` is what carries the value visually; `aria-valuetext` carries
- * it to a screen reader, because a range announces only the bare number and
- * "16" or "1.65" says nothing about what it is.
- */
-function Slider({
-  id,
-  value,
-  display,
-  valueText,
-  range,
-  onChange,
-}: {
-  id: string;
-  value: number;
-  display: string;
-  valueText: string;
-  range: { min: number; max: number; step: number };
-  onChange: (next: number) => void;
-}) {
-  return (
-    <div className="slider">
-      <input
-        id={id}
-        type="range"
-        min={range.min}
-        max={range.max}
-        step={range.step}
-        value={value}
-        aria-labelledby={`${id}-label`}
-        aria-valuetext={valueText}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-      {/* Hidden from the accessibility tree on purpose: `<output>` is a live
-          region by default, so left exposed it would re-announce on every tick
-          of a drag — on top of the range's own aria-valuetext, which already
-          says the same thing. This copy is for eyes only. */}
-      <output className="slider-value" htmlFor={id} aria-hidden="true">
-        {display}
-      </output>
-    </div>
-  );
-}
-
 function App() {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [busy, setBusy] = useState<Busy>(null);
@@ -461,10 +346,14 @@ function App() {
   const [preset, setPreset] = useState<ThemePresetId>(DEFAULT_SETTINGS.themePreset);
   const [customCss, setCustomCss] = useState(DEFAULT_SETTINGS.customCss);
   const [reading, setReading] = useState<Reading>(READING_DEFAULTS);
-  const [behaviour, setBehaviour] = useState<Behaviour>(BEHAVIOUR_DEFAULTS);
   const [pins, setPins] = useState<DocumentThemeEntry[] | null>(null);
   const [imported, setImported] = useState<ImportResult | null>(null);
   const [app] = useState(readManifest);
+
+  /** Every plugin's enabled flag and settings, as one blob. See `plugins.ts`. */
+  const [plugins, setPlugins] = useState<StoredSettings>(emptySettings);
+  /** Why the host switched a plugin off during the last render, if it did. */
+  const [failures, setFailures] = useState<PluginFailures>({});
 
   /**
    * Which half of a preset the preview shows. `auto` has no colour of its own,
@@ -480,6 +369,10 @@ function App() {
    */
   const queued = useRef<Partial<Settings> | null>(null);
   const writeTimer = useRef<number | null>(null);
+
+  /** The same pair for plugin settings, which live under their own key. */
+  const queuedPlugins = useRef<StoredSettings | null>(null);
+  const pluginTimer = useRef<number | null>(null);
 
   /** Last file-access value we acted on, so a flip to on syncs exactly once. */
   const lastFileAccess = useRef<boolean | null>(null);
@@ -516,6 +409,17 @@ function App() {
     void saveSettings(patch).catch(() => undefined);
   }, []);
 
+  const flushPlugins = useCallback(() => {
+    if (pluginTimer.current !== null) {
+      window.clearTimeout(pluginTimer.current);
+      pluginTimer.current = null;
+    }
+    const next = queuedPlugins.current;
+    queuedPlugins.current = null;
+    if (!next) return;
+    void writePluginSettings(next).catch(() => undefined);
+  }, []);
+
   /**
    * Apply a reading setting. The screen updates synchronously in every case;
    * `defer` only delays the storage write, and is used by the sliders, which
@@ -540,6 +444,26 @@ function App() {
   );
 
   /**
+   * The same shape for the plugin blob. The whole blob is queued rather than a
+   * patch: it is one storage key, so the last state to reach here is exactly
+   * what should be written, and there is nothing to merge.
+   */
+  const applyPlugins = useCallback(
+    (next: StoredSettings, defer = false) => {
+      setPlugins(next);
+      queuedPlugins.current = next;
+
+      if (!defer) {
+        flushPlugins();
+        return;
+      }
+      if (pluginTimer.current !== null) window.clearTimeout(pluginTimer.current);
+      pluginTimer.current = window.setTimeout(flushPlugins, WRITE_DELAY_MS);
+    },
+    [flushPlugins],
+  );
+
+  /**
    * The stylesheet, on the same deferred write as the sliders and for the same
    * reason: a keystroke is not a decision, and writing on every one of them
    * would republish the sheet to every open document mid-word.
@@ -555,33 +479,26 @@ function App() {
     [flushWrite],
   );
 
-  /** Switches write immediately: a flip is one deliberate act, not a drag. */
-  const applyBehaviour = useCallback(
-    (patch: Partial<Behaviour>) => {
-      setBehaviour((prev) => ({ ...prev, ...patch }));
-      void saveSettings(patch).catch((error) =>
-        say('behaviour', 'error', describeError(error)),
-      );
-    },
-    [say],
-  );
-
   const resetReading = () => {
     applyReading(READING_DEFAULTS);
-    say('reading', 'ok', 'Reading settings are back to their defaults.');
+    say('general', 'ok', 'Typography is back to its defaults.');
   };
 
   // A queued write is lost if the page goes away first, and an options page is
   // usually closed the instant the last slider is released. `pagehide` is the
   // one event that still fires when the tab is closed or put in the bfcache.
   useEffect(() => {
-    const onHide = () => flushWrite();
+    const onHide = () => {
+      flushWrite();
+      flushPlugins();
+    };
     window.addEventListener('pagehide', onHide);
     return () => {
       window.removeEventListener('pagehide', onHide);
       flushWrite();
+      flushPlugins();
     };
-  }, [flushWrite]);
+  }, [flushWrite, flushPlugins]);
 
   /**
    * Re-read every permission from the browser. Called on load, after each
@@ -661,8 +578,9 @@ function App() {
       setPreset(settings.themePreset);
       setCustomCss(settings.customCss);
       setReading(pickReading(settings));
-      setBehaviour(pickBehaviour(settings));
     });
+    void readPluginSettings().then(setPlugins);
+    void readPluginFailures().then(setFailures);
   }, [refresh]);
 
   // The popup writes the same settings, so mirror them rather than drift.
@@ -679,6 +597,16 @@ function App() {
           setReading(pickReading(next));
           setCustomCss(next.customCss);
         }
+      }),
+    [],
+  );
+
+  // The command palette can toggle a plugin from an open document. Same guard
+  // as above: a write of ours still in flight is ahead of storage, not behind.
+  useEffect(
+    () =>
+      onPluginSettingsChanged((next) => {
+        if (queuedPlugins.current === null) setPlugins(next);
       }),
     [],
   );
@@ -708,6 +636,8 @@ function App() {
         // A document can have been pinned in another tab while this page sat
         // open; the list is only useful if it is the current one.
         void refreshPins();
+        // And a document opened meanwhile may have hit a plugin that throws.
+        void readPluginFailures().then(setFailures);
       }
     };
     document.addEventListener('visibilitychange', onVisible);
@@ -818,7 +748,6 @@ function App() {
       setPreset(settings.themePreset);
       setCustomCss(settings.customCss);
       setReading(pickReading(settings));
-      setBehaviour(pickBehaviour(settings));
 
       say(
         'backup',
@@ -1167,10 +1096,14 @@ function App() {
           </div>
         </section>
 
-        {/* Appearance --------------------------------------------------- */}
-        <section className="card" aria-labelledby="appearance-h">
+        {/* General ------------------------------------------------------ */}
+        {/* Theme, palette, typography and the stylesheet describe the
+            document itself rather than any one feature, so they belong to no
+            plugin and cannot be generated from a schema. Everything that does
+            belong to a plugin is below, generated. */}
+        <section className="card" aria-labelledby="general-h">
           <div className="card-head">
-            <h2 id="appearance-h">Appearance</h2>
+            <h2 id="general-h">General</h2>
           </div>
 
           <div className="row">
@@ -1185,27 +1118,13 @@ function App() {
               </p>
             </div>
 
-            <div
-              className="segmented"
-              role="radiogroup"
-              aria-labelledby="theme-label"
-            >
-              {THEME_OPTIONS.map(({ value, label }) => (
-                <label
-                  key={value}
-                  className={value === theme ? 'segment is-on' : 'segment'}
-                >
-                  <input
-                    type="radio"
-                    name="theme"
-                    value={value}
-                    checked={value === theme}
-                    onChange={() => chooseTheme(value)}
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </div>
+            <Segmented
+              name="theme"
+              value={theme}
+              options={THEME_OPTIONS}
+              labelledBy="theme-label"
+              onChange={chooseTheme}
+            />
           </div>
 
           <div className="row row-stack">
@@ -1303,12 +1222,129 @@ function App() {
               </pre>
             </div>
           </div>
-        </section>
 
-        {/* Your stylesheet ---------------------------------------------- */}
-        <section className="card" aria-labelledby="css-h">
-          <div className="card-head">
-            <h2 id="css-h">Your stylesheet</h2>
+          <div className="row">
+            <div className="row-text">
+              <h3 className="row-title" id="font-label">
+                Font
+              </h3>
+              <p className="row-desc">
+                Fonts already on this computer. The extension never downloads
+                one, so nothing here reaches the network.
+              </p>
+            </div>
+
+            <Segmented
+              name="font-family"
+              value={reading.fontFamily}
+              options={FONT_FAMILY_OPTIONS}
+              labelledBy="font-label"
+              onChange={(value) => applyReading({ fontFamily: value })}
+            />
+          </div>
+
+          <div className="row">
+            <div className="row-text">
+              <h3 className="row-title" id="font-size-label">
+                Font size
+              </h3>
+              <p className="row-desc">
+                The base size for body text. Headings, code and captions are
+                sized in proportion to it, so they all move together.
+              </p>
+            </div>
+
+            <Slider
+              id="font-size"
+              value={reading.fontSize}
+              display={`${reading.fontSize}px`}
+              valueText={`${reading.fontSize} pixels`}
+              range={FONT_SIZE_RANGE}
+              // Deferred: a drag fires this on every pixel of travel.
+              onChange={(next) => applyReading({ fontSize: next }, true)}
+            />
+          </div>
+
+          <div className="row">
+            <div className="row-text">
+              <h3 className="row-title" id="line-height-label">
+                Line height
+              </h3>
+              <p className="row-desc">
+                Space between lines, as a multiple of the font size. More helps
+                on long paragraphs; less fits more on screen.
+              </p>
+            </div>
+
+            <Slider
+              id="line-height"
+              value={reading.lineHeight}
+              display={reading.lineHeight.toFixed(2)}
+              valueText={lineHeightText(reading.lineHeight)}
+              range={LINE_HEIGHT_RANGE}
+              onChange={(next) =>
+                applyReading({ lineHeight: roundLineHeight(next) }, true)
+              }
+            />
+          </div>
+
+          <div className="row">
+            <div className="row-text">
+              <h3 className="row-title" id="content-width-label">
+                Content width
+              </h3>
+              <p className="row-desc">
+                How wide a line of text is allowed to get. Measured in
+                characters rather than pixels, so it stays the same length of
+                line whatever font size you pick. <strong>Full</strong> removes
+                the limit.
+              </p>
+            </div>
+
+            <Segmented
+              name="content-width"
+              value={reading.contentWidth}
+              options={CONTENT_WIDTH_OPTIONS}
+              labelledBy="content-width-label"
+              onChange={(value) => applyReading({ contentWidth: value })}
+            />
+          </div>
+
+          <div className="row row-stack">
+            <h3 className="row-title" id="preview-label">
+              Preview
+            </h3>
+            {/* Rendered from the same four custom properties as a real
+                document, so this is the actual result rather than an
+                impression of it. */}
+            <div
+              className="preview"
+              style={previewVars(reading)}
+              role="group"
+              aria-labelledby="preview-label"
+            >
+              <p className="preview-title">Notes on the estuary</p>
+              <p>
+                The tide runs out twice a day and leaves the whole channel bare,
+                a flat grey mile of it, stitched with the tracks of birds that
+                got there first.
+              </p>
+              <p>
+                Everything worth reading is somewhere in the middle of a long
+                paragraph, which is why a sample of one line tells you nothing
+                about whether a setting is comfortable to read.
+              </p>
+            </div>
+
+            <div className="actions">
+              <button
+                type="button"
+                className="btn btn-quiet"
+                onClick={resetReading}
+              >
+                Reset typography to defaults
+              </button>
+            </div>
           </div>
 
           <div className="row row-stack">
@@ -1383,16 +1419,51 @@ function App() {
                 disabled={customCss === ''}
                 onClick={() => {
                   applyCustomCss('');
-                  say('css', 'ok', 'Your stylesheet is empty again.');
+                  say('general', 'ok', 'Your stylesheet is empty again.');
                 }}
               >
                 Remove my stylesheet
               </button>
             </div>
 
-            <Message notice={noticeFor('css')} />
+            <Message notice={noticeFor('general')} />
           </div>
         </section>
+
+        {/* Features ----------------------------------------------------- */}
+        {/* Everything below is generated from `PLUGINS`. There is no list of
+            features here to fall out of step with the registry — a plugin that
+            exists gets a section, and the controls in it are exactly the
+            settings it declares. */}
+        <section className="card" aria-labelledby="features-h">
+          <div className="card-head">
+            <h2 id="features-h">Features</h2>
+          </div>
+
+          <div className="row row-stack">
+            <p className="row-desc">
+              Every part of the viewer is a feature that can be switched off, and
+              switching one off removes it completely rather than hiding it. The
+              markdown ones change how a document is parsed, so they take effect
+              the next time it is rendered.
+            </p>
+          </div>
+        </section>
+
+        {PLUGINS.map((plugin) => (
+          <PluginSection
+            key={plugin.id}
+            plugin={plugin}
+            stored={plugins}
+            failure={failures[plugin.id]}
+            onToggle={(enabled) =>
+              applyPlugins(withEnabled(plugins, plugin.id, enabled))
+            }
+            onSetting={(key, value, defer) =>
+              applyPlugins(withSetting(plugins, plugin.id, key, value), defer)
+            }
+          />
+        ))}
 
         {/* Pinned documents --------------------------------------------- */}
         <section className="card" aria-labelledby="pins-h">
@@ -1519,258 +1590,6 @@ function App() {
                 ))}
               </ul>
             )}
-          </div>
-        </section>
-
-        {/* Reading ------------------------------------------------------ */}
-        <section className="card" aria-labelledby="reading-h">
-          <div className="card-head">
-            <h2 id="reading-h">Reading</h2>
-          </div>
-
-          <div className="row">
-            <div className="row-text">
-              <h3 className="row-title" id="font-label">
-                Font
-              </h3>
-              <p className="row-desc">
-                Fonts already on this computer. The extension never downloads
-                one, so nothing here reaches the network.
-              </p>
-            </div>
-
-            <div
-              className="segmented"
-              role="radiogroup"
-              aria-labelledby="font-label"
-            >
-              {FONT_FAMILY_OPTIONS.map(({ value, label }) => (
-                <label
-                  key={value}
-                  className={
-                    value === reading.fontFamily ? 'segment is-on' : 'segment'
-                  }
-                >
-                  <input
-                    type="radio"
-                    name="font-family"
-                    value={value}
-                    checked={value === reading.fontFamily}
-                    onChange={() =>
-                      applyReading({ fontFamily: value })
-                    }
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="row">
-            <div className="row-text">
-              <h3 className="row-title" id="font-size-label">
-                Font size
-              </h3>
-              <p className="row-desc">
-                The base size for body text. Headings, code and captions are
-                sized in proportion to it, so they all move together.
-              </p>
-            </div>
-
-            <Slider
-              id="font-size"
-              value={reading.fontSize}
-              display={`${reading.fontSize}px`}
-              valueText={`${reading.fontSize} pixels`}
-              range={FONT_SIZE_RANGE}
-              // Deferred: a drag fires this on every pixel of travel.
-              onChange={(next) => applyReading({ fontSize: next }, true)}
-            />
-          </div>
-
-          <div className="row">
-            <div className="row-text">
-              <h3 className="row-title" id="line-height-label">
-                Line height
-              </h3>
-              <p className="row-desc">
-                Space between lines, as a multiple of the font size. More helps
-                on long paragraphs; less fits more on screen.
-              </p>
-            </div>
-
-            <Slider
-              id="line-height"
-              value={reading.lineHeight}
-              display={reading.lineHeight.toFixed(2)}
-              valueText={lineHeightText(reading.lineHeight)}
-              range={LINE_HEIGHT_RANGE}
-              onChange={(next) =>
-                applyReading({ lineHeight: roundLineHeight(next) }, true)
-              }
-            />
-          </div>
-
-          <div className="row">
-            <div className="row-text">
-              <h3 className="row-title" id="content-width-label">
-                Content width
-              </h3>
-              <p className="row-desc">
-                How wide a line of text is allowed to get. Measured in
-                characters rather than pixels, so it stays the same length of
-                line whatever font size you pick. <strong>Full</strong> removes
-                the limit.
-              </p>
-            </div>
-
-            <div
-              className="segmented"
-              role="radiogroup"
-              aria-labelledby="content-width-label"
-            >
-              {CONTENT_WIDTH_OPTIONS.map(({ value, label }) => (
-                <label
-                  key={value}
-                  className={
-                    value === reading.contentWidth ? 'segment is-on' : 'segment'
-                  }
-                >
-                  <input
-                    type="radio"
-                    name="content-width"
-                    value={value}
-                    checked={value === reading.contentWidth}
-                    onChange={() =>
-                      applyReading({ contentWidth: value })
-                    }
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="row">
-            <div className="row-text">
-              <h3 className="row-title" id="toc-label">
-                Show table of contents
-              </h3>
-              <p className="row-desc" id="toc-desc">
-                A sidebar of the document's headings, which follows along as you
-                scroll. Documents with a single heading never show one, since an
-                outline of one entry is not navigation.
-              </p>
-            </div>
-
-            <Switch
-              on={reading.showToc}
-              busy={false}
-              disabled={false}
-              labelledBy="toc-label"
-              describedBy="toc-desc"
-              onChange={(next) => applyReading({ showToc: next })}
-            />
-          </div>
-
-          <div className="row row-stack">
-            <h3 className="row-title" id="preview-label">
-              Preview
-            </h3>
-            {/* Rendered from the same four custom properties as a real
-                document, so this is the actual result rather than an
-                impression of it. */}
-            <div
-              className="preview"
-              style={previewVars(reading)}
-              role="group"
-              aria-labelledby="preview-label"
-            >
-              <p className="preview-title">Notes on the estuary</p>
-              <p>
-                The tide runs out twice a day and leaves the whole channel bare,
-                a flat grey mile of it, stitched with the tracks of birds that
-                got there first.
-              </p>
-              <p>
-                Everything worth reading is somewhere in the middle of a long
-                paragraph, which is why a sample of one line tells you nothing
-                about whether a setting is comfortable to read.
-              </p>
-            </div>
-
-            <div className="actions">
-              <button
-                type="button"
-                className="btn btn-quiet"
-                onClick={resetReading}
-              >
-                Reset to defaults
-              </button>
-            </div>
-
-            <Message notice={noticeFor('reading')} />
-          </div>
-        </section>
-
-        {/* Behaviour ---------------------------------------------------- */}
-        <section className="card" aria-labelledby="behaviour-h">
-          <div className="card-head">
-            <h2 id="behaviour-h">Behaviour</h2>
-          </div>
-
-          <div className="row">
-            <div className="row-main">
-              <h3 className="row-title" id="scroll-label">
-                Remember where you left off
-              </h3>
-              <p className="row-desc" id="scroll-desc">
-                Reopening a document returns you to the section you were
-                reading. Positions are stored locally and are kept for the last
-                {' '}
-                {DOCUMENT_STATE_LIMIT} documents.
-              </p>
-            </div>
-
-            <Switch
-              on={behaviour.rememberScroll}
-              busy={false}
-              disabled={false}
-              labelledBy="scroll-label"
-              describedBy="scroll-desc"
-              onChange={(next) => applyBehaviour({ rememberScroll: next })}
-            />
-          </div>
-
-          <div className="row">
-            <div className="row-main">
-              <h3 className="row-title" id="reload-label">
-                Reload when the file changes
-              </h3>
-              {/* The copy states the network consequence plainly, because this
-                  is the one setting that causes the extension to make a
-                  request at all. */}
-              <p className="row-desc" id="reload-desc">
-                Re-reads the open document while you edit it, so saving shows
-                the change without a refresh. This is the only setting that
-                makes the extension send a request, and it only ever re-reads
-                the document already on screen — never anything else, and never
-                anywhere else. It is off unless you turn it on.
-              </p>
-            </div>
-
-            <Switch
-              on={behaviour.liveReload}
-              busy={false}
-              disabled={false}
-              labelledBy="reload-label"
-              describedBy="reload-desc"
-              onChange={(next) => applyBehaviour({ liveReload: next })}
-            />
-          </div>
-
-          <div className="row row-stack">
-            <Message notice={noticeFor('behaviour')} />
           </div>
         </section>
 

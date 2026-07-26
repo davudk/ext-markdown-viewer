@@ -27,10 +27,10 @@ import {
   DOCUMENT_THEME_KEY,
   DOCUMENT_THEME_LIMIT,
   CUSTOM_CSS_MAX_LENGTH,
-  THEME_PRESETS,
   THEME_TOKENS,
 } from '../lib/config.ts';
 import {
+  THEME_PRESETS,
   applyDocumentTheme,
   checkContrast,
   clearAllDocumentThemes,

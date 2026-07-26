@@ -32,11 +32,9 @@
  */
 
 import {
+  createCache,
   SEARCH_REGEX_BUDGET_MS,
   SEARCH_WORKER_TIMEOUT_MS,
-} from './config.ts';
-import {
-  createCache,
   handleRequest,
   type Detail,
   type SearchOptions,

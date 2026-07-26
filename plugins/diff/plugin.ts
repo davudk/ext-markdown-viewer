@@ -36,6 +36,41 @@ import {
   type Plugin,
 } from '../../lib/plugins/types.ts';
 
+/* -------------------------------------------------------------------------- */
+/* How the two files are shown                                                 */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Read by `Diff.tsx` and nothing else, so they are the diff plugin's data
+ * rather than the extension's. They sit in this file and not in the component
+ * because the bare test runner cannot load a `.tsx`.
+ */
+
+/** How the source diff lays the two files out. */
+export type DiffLayout = 'split' | 'unified';
+
+/** Which representation of the two files is compared. */
+export type DiffMode = 'source' | 'rendered';
+
+/**
+ * Split source is the default because it is the only combination that answers
+ * both questions at once — what changed, and what the line now says — without
+ * the reader reconstructing one from the other. Unified is for narrow windows
+ * and long lines; rendered is for prose, where the markup is the noise.
+ */
+export const DEFAULT_DIFF_MODE: DiffMode = 'source';
+export const DEFAULT_DIFF_LAYOUT: DiffLayout = 'split';
+
+export const DIFF_MODE_OPTIONS: ReadonlyArray<{ value: DiffMode; label: string }> = [
+  { value: 'source', label: 'Source' },
+  { value: 'rendered', label: 'Rendered' },
+];
+
+export const DIFF_LAYOUT_OPTIONS: ReadonlyArray<{ value: DiffLayout; label: string }> = [
+  { value: 'split', label: 'Split' },
+  { value: 'unified', label: 'Unified' },
+];
+
 export const DIFF_PLUGIN_ID = 'diff';
 
 /** Overlay ids. Stable, because `openOverlay` is idempotent per id. */

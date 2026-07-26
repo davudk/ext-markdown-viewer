@@ -1,15 +1,25 @@
 /**
- * Every static value in the extension: activation rules, defaults, shared
- * identifiers, and library configuration.
- *
- * The split this file enforces is data here, behaviour everywhere else. Adding
- * a supported extension, allowing another host, or introducing a new setting
- * should be an edit to this file alone — if it also requires touching logic,
- * the logic is probably over-specific and worth reworking instead.
+ * The values that cross contexts: activation rules, the DOM contract, build
+ * output paths, the add-on table, permissions, the global settings, and the
+ * markdown and sanitizer configuration `lib/markdown.ts` is built from.
  *
  * Nothing here imports from the rest of the codebase, so it can be pulled into
  * any context (service worker, content script, extension page, node test) with
- * no risk of a cycle.
+ * no risk of a cycle. That is the whole reason the file exists, and it is also
+ * the test for what belongs in it.
+ *
+ * The rule, which this file did not used to keep: **a constant lives with the
+ * code that reads it.** A value read by one plugin is that plugin's; one read by
+ * one module is that module's. What is left here is what two contexts have to
+ * agree on and neither can own — a filename the service worker injects and the
+ * build check asserts, a class the parser writes and an add-on finds, a scheme
+ * three unrelated modules must recognise. Adding something here means answering
+ * why the module that reads it cannot hold it instead.
+ *
+ * `scripts/check-build.mjs` parses `RENDERER_JS`, `RENDERER_CSS_FILES`,
+ * `REQUIRED_PERMISSIONS` and `ADDONS` out of this file by regex, and
+ * `scripts/audit-network.mjs` does the same to `FETCH_ALLOWLIST`. Reformatting
+ * any of the five breaks a build check silently; run both after touching them.
  */
 
 import type { MarkdownKatexOptions } from '@vscode/markdown-it-katex';
@@ -116,23 +126,6 @@ export const SHORTCUTS = {
   search: '/',
 } as const;
 
-/**
- * Full-document search, held apart from `SHORTCUTS` for the same reason the
- * command palette is: it is only ever matched with ctrl/cmd *and* shift held.
- * `f` on its own is a character, and quick find already owns the unshifted form.
- */
-export const SEARCH_ALL_KEY = 'f';
-
-/**
- * The command palette's key, held apart from `SHORTCUTS` because it is not one.
- *
- * `SHORTCUTS` is a table of unmodified single keys, and `useKeyboardShortcuts`
- * refuses any event carrying a modifier — putting `k` in there would bind a bare
- * `k` as well, which is a character in every field on the page. This is matched
- * only with ctrl or cmd held, the way every other palette in the world spells it.
- */
-export const COMMAND_PALETTE_KEY = 'k';
-
 /** Export formats. Both are produced client-side; nothing is uploaded. */
 export const EXPORT_FORMATS = [
   { value: 'html', label: 'HTML', extension: '.html' },
@@ -141,144 +134,19 @@ export const EXPORT_FORMATS = [
 
 export type ExportFormat = (typeof EXPORT_FORMATS)[number]['value'];
 
-/** How many search matches to mark before giving up on a pathological query. */
-export const SEARCH_MATCH_LIMIT = 2000;
-
-/**
- * How many rows the sidebar's result list will build before it stops counting.
- *
- * Lower than SEARCH_MATCH_LIMIT because these are not the same object. A quick
- * find match is a painted range and a number in a counter; a panel result is a
- * row carrying a breadcrumb, a line number and a snippet, and a thousand of
- * those already outlasts anybody's willingness to scroll them. The panel says so
- * rather than silently stopping.
- */
-export const SEARCH_RESULT_LIMIT = 1000;
-
-/** Files a folder-wide search will read before it reports the rest unsearched. */
-export const SEARCH_FILE_LIMIT = 2000;
-
-/**
- * Keystroke settling time before a query is dispatched, in milliseconds.
- *
- * One search per pause, not one per keypress. Quick find uses a shorter one of
- * its own — it is searching a document already in memory and the reader is
- * watching the count move — while the panel may be about to read a thousand
- * files off a disk.
- */
-export const SEARCH_DEBOUNCE_MS = 150;
-
-/**
- * How long one document may be scanned before the scan is abandoned.
- *
- * This is the ReDoS budget, and `lib/search.ts` is explicit about the half of
- * the problem it can and cannot solve: the clock is only read between matches,
- * so it catches a pattern that is slow *often* and not one that is catastrophic
- * *once*. The second half is `lib/search-client.ts`, which can terminate a
- * worker that has stopped answering — the only thing that actually stops a
- * regular expression already running.
- */
-export const SEARCH_REGEX_BUDGET_MS = 50;
-
-/**
- * How long the client waits for a worker to answer before writing it off.
- *
- * Generous next to the budget above, because it has to cover a genuinely large
- * document as well as a wedged one, and terminating a worker that was merely
- * busy costs the reader a repeated search.
- */
-export const SEARCH_WORKER_TIMEOUT_MS = 3000;
-
-/**
- * Keys the worker caches documents under.
- *
- * Two, because the two halves of search read two different texts and both are
- * "this document". Quick find searches what is *rendered* — the text extracted
- * from the DOM, which is what it can paint ranges over. The panel searches the
- * markdown *source*, because a line number is a fact about a file and not about
- * a rendered tree. Files pulled out of a folder are keyed by their path under
- * the third prefix, which is what keeps a file called `source` from evicting it.
- */
-export const SEARCH_DOCUMENT_KEY = 'rendered';
-export const SEARCH_SOURCE_KEY = 'source';
-export const SEARCH_FILE_KEY_PREFIX = 'file:';
-
-/**
- * Reading speed for whitespace-delimited prose, in words per minute.
- *
- * Middling silent-reading rates for adults land between 200 and 260 wpm on
- * ordinary text; documentation sits at the slower end of that, so this is
- * deliberately not the flattering number.
- */
-export const READING_WORDS_PER_MINUTE = 220;
-
-/**
- * Reading speed for CJK text, in *characters* per minute.
- *
- * A separate rate because a Chinese, Japanese or Korean character carries far
- * more than a Latin one — timing them at the same rate as words would report a
- * page of Chinese as a ten-second read.
- */
-export const READING_CJK_PER_MINUTE = 480;
-
-/**
- * Heading levels that get a fold control.
- *
- * All six rather than `TOC_LEVELS`: an `h5` still owns the paragraphs under it,
- * and a section that cannot be collapsed because it is too deep to appear in
- * the sidebar would be arbitrary.
- */
-export const FOLD_LEVELS = [1, 2, 3, 4, 5, 6];
-
-/* -------------------------------------------------------------------------- */
-/* Sidebar                                                                     */
-/* -------------------------------------------------------------------------- */
-
-/**
- * The tabs themselves are gone from here.
- *
- * They were an id and a label in this file plus a row in `Sidebar.tsx`'s
- * `PANELS` map, and a tab is now a plugin contributing to `sidebar.tab` — so
- * neither this module nor the sidebar knows how many there are. Only the
- * storage key stayed, because it is a key.
- */
-
-/** Sidebar UI state (which tab is open), kept out of `Settings` — it is not a preference. */
-export const SIDEBAR_STATE_KEY = 'sidebar';
-
 /* -------------------------------------------------------------------------- */
 /* Folder browser                                                              */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Directories never listed, whatever they contain. Dotted names are excluded by
- * rule rather than by list; these two are the ones that are not dotted and are
- * large enough that expanding one is indistinguishable from a hang.
- */
-export const FOLDER_SKIP_DIRECTORIES = ['node_modules', '.git'];
-
-/**
- * Entries kept from a single directory. A generated output folder can hold tens
- * of thousands of files, and the cost is not the read — it is the rows. The
- * browser reports the overflow rather than pretending the directory ends here.
- */
-export const FOLDER_ENTRY_LIMIT = 500;
-
-/**
- * Where a picked directory handle is kept.
- *
- * IndexedDB, because a `FileSystemDirectoryHandle` is structured-cloneable but
- * not JSON — chrome.storage cannot hold one. See `lib/folder.ts` for what this
- * does and does not survive; the short version is that a content script writes
- * under the *page's* origin, so this is per-origin storage, not per-extension.
- */
-export const FOLDER_DB_NAME = 'mdv-folder';
-export const FOLDER_STORE_NAME = 'handles';
-export const FOLDER_HANDLE_KEY = 'current';
-
-/**
  * Identity scheme for a document read through a directory handle rather than
  * fetched from an address.
+ *
+ * Here rather than with the rest of the folder constants — which moved to
+ * `lib/folder.ts`, the only module that reads them — because this one is an
+ * activation rule wearing a folder's clothes: `lib/live-reload.ts`, the wikilink
+ * plugin and `documentKey()` all have to recognise it, and none of them opens a
+ * directory.
  *
  * Deliberately absent from `SUPPORTED_PROTOCOLS`: such a document has no URL to
  * re-request, so live reload must decline it rather than poll the page it
@@ -384,37 +252,6 @@ export const MATH_DISPLAY_CLASS = 'mdv-math-display';
 export const EXPORT_BRIDGE_KEY = '__mdvExport';
 
 /* -------------------------------------------------------------------------- */
-/* Diagram pan/zoom and export                                                 */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Zoom limits and the multiplier one button press or `+`/`-` applies.
- *
- * `min` is below 1 because the reason to zoom a diagram out is that it is
- * already wider than the measure; `max` is the point past which the vectors
- * stop carrying more than the screen can show.
- */
-export const MERMAID_ZOOM = { min: 0.25, max: 12, step: 1.4 } as const;
-
-/** Pixels a diagram moves per arrow-key press. */
-export const MERMAID_PAN_STEP_PX = 48;
-
-/**
- * Retina. A diagram exported at 1× is a screenshot of a vector drawing and
- * looks like one the moment it is placed in anything.
- */
-export const MERMAID_PNG_SCALE = 2;
-
-/** Ceiling on either PNG dimension, so a wall-sized diagram cannot exhaust memory. */
-export const MERMAID_PNG_MAX_PX = 8_192;
-
-/** Size for a diagram whose SVG carries neither a viewBox nor an explicit one. */
-export const MERMAID_EXPORT_FALLBACK = { width: 960, height: 540 } as const;
-
-/** Basename of an exported diagram, before its index and extension. */
-export const MERMAID_EXPORT_BASENAME = 'diagram';
-
-/* -------------------------------------------------------------------------- */
 /* Document comparison                                                         */
 /* -------------------------------------------------------------------------- */
 
@@ -432,61 +269,6 @@ export const DIFF_BRIDGE_KEY = '__mdvDiff';
 
 /** Fired on `window` once the key above is set, so a waiter need not poll. */
 export const DIFF_READY_EVENT = 'mdv-diff-ready';
-
-/** How the source diff lays the two files out. */
-export type DiffLayout = 'split' | 'unified';
-
-/** Which representation of the two files is compared. */
-export type DiffMode = 'source' | 'rendered';
-
-/**
- * Split source is the default because it is the only combination that answers
- * both questions at once — what changed, and what the line now says — without
- * the reader reconstructing one from the other. Unified is for narrow windows
- * and long lines; rendered is for prose, where the markup is the noise.
- */
-export const DEFAULT_DIFF_MODE: DiffMode = 'source';
-export const DEFAULT_DIFF_LAYOUT: DiffLayout = 'split';
-
-export const DIFF_MODE_OPTIONS: ReadonlyArray<Option<DiffMode>> = [
-  { value: 'source', label: 'Source' },
-  { value: 'rendered', label: 'Rendered' },
-];
-
-export const DIFF_LAYOUT_OPTIONS: ReadonlyArray<Option<DiffLayout>> = [
-  { value: 'split', label: 'Split' },
-  { value: 'unified', label: 'Unified' },
-];
-
-/** Unchanged lines kept either side of a change before the run is folded away. */
-export const DIFF_CONTEXT_LINES = 3;
-
-/**
- * A run shorter than this is left alone: folding it away would replace four
- * rows with one row plus a gap marker, which is not a saving.
- */
-export const DIFF_MIN_COLLAPSE_LINES = 9;
-
-/**
- * Lines per file above which the comparison refuses rather than tries.
- *
- * jsdiff is O(nd) and every row is real DOM; a pair of generated files can be
- * tens of thousands of lines each, and a comparison that locks the tab for a
- * minute is worse than one that says up front it will not run.
- */
-export const DIFF_MAX_LINES = 20_000;
-
-/** The markdown source is highlighted as markdown, so a diff still reads as one. */
-export const DIFF_HIGHLIGHT_LANGUAGE = 'markdown';
-
-/**
- * Keys that open a row's menu in the folder tree, alongside right-click.
- *
- * `ContextMenu` and Shift-F10 are what the platform already binds. `c` is here
- * because a Mac keyboard has neither, and a menu only a mouse can open is a
- * menu a good number of readers do not have.
- */
-export const CONTEXT_MENU_KEYS = ['ContextMenu', 'F10', 'c'];
 
 /* -------------------------------------------------------------------------- */
 /* Permissions                                                                 */
@@ -523,12 +305,16 @@ export type FontFamily = 'system' | 'serif' | 'mono';
 export type ContentWidth = 'narrow' | 'normal' | 'wide' | 'full';
 
 /**
- * Where presentation mode cuts one slide from the next.
+ * The *global* settings, and only those: the ones that describe the document
+ * itself rather than any one feature, so that several plugins read them and the
+ * options page writes them through one bag.
  *
- * `auto` prefers `rule` and falls back to `heading`; see SLIDE_SPLIT_OPTIONS.
+ * Everything else that used to live here is a plugin now. "Is there a sidebar",
+ * "does math render", "are slides offered" are each one concept — a plugin's
+ * enabled state — rather than a setting and a plugin that could disagree, and a
+ * feature's own knobs live in its `settings` schema under its own id. A field
+ * added here has to answer why every plugin should be able to see it.
  */
-export type SlideSplit = 'auto' | 'rule' | 'heading';
-
 export interface Settings {
   theme: Theme;
   /**
@@ -547,55 +333,6 @@ export interface Settings {
   fontSize: number;
   lineHeight: number;
   contentWidth: ContentWidth;
-  /** Whether the table-of-contents sidebar is shown at all. */
-  showToc: boolean;
-  /**
-   * Re-read the open document when the underlying file changes.
-   *
-   * Off by default, and the only setting that is. Detecting a change means
-   * re-requesting the document's own address — the sole request the extension
-   * can ever make — so it stays something the user turns on deliberately rather
-   * than something they would have to discover and turn off.
-   */
-  liveReload: boolean;
-  /** Restore the previous scroll position when reopening a document. */
-  rememberScroll: boolean;
-  /** Render ```mermaid blocks as diagrams. Costs an on-demand add-on injection. */
-  mermaid: boolean;
-  /** Render $inline$ and $$block$$ math with KaTeX. */
-  math: boolean;
-  /** Click an image to open it full-size with keyboard navigation. */
-  lightbox: boolean;
-  /**
-   * Mark links that leave the document with a small trailing indicator.
-   *
-   * Derived from the URL and the document's own address, never from a request:
-   * asking each host whether it exists would hand every one of them the fact
-   * that this document was opened.
-   */
-  externalLinks: boolean;
-  /** Offer presentation mode on rendered documents. */
-  presentation: boolean;
-  /** Where presentation mode cuts slides. */
-  slideSplit: SlideSplit;
-  /**
-   * Word count and reading time for the open document.
-   *
-   * Counted from the rendered text with code blocks left out; see
-   * `lib/reading.ts` for what that means and why.
-   */
-  readingStats: boolean;
-  /** A thin bar tracking how far through the document the reader has scrolled. */
-  readingProgress: boolean;
-  /**
-   * A fold control on every heading, collapsing the section under it.
-   *
-   * On by default even though it puts a control on every heading: the control
-   * is muted until the heading is approached, and a folding feature nobody can
-   * see is a folding feature nobody uses. Fold state is per-session — see
-   * `components/HeadingFold.tsx` for why it is deliberately not persisted.
-   */
-  headingFold: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -606,19 +343,15 @@ export const DEFAULT_SETTINGS: Settings = {
   fontSize: 16,
   lineHeight: 1.65,
   contentWidth: 'normal',
-  showToc: true,
-  liveReload: false,
-  rememberScroll: true,
-  mermaid: true,
-  math: true,
-  lightbox: true,
-  externalLinks: true,
-  presentation: true,
-  slideSplit: 'auto',
-  readingStats: true,
-  readingProgress: true,
-  headingFold: true,
 };
+
+/**
+ * The global settings, as a list, so code that has to enumerate them does not
+ * restate the interface. `test/settings-io.test.ts` asserts it matches
+ * `DEFAULT_SETTINGS` exactly, which is what keeps a field added above from
+ * being silently unexportable.
+ */
+export const GLOBAL_SETTING_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[];
 
 /**
  * Modules permitted to call `fetch`. Enforced against the source tree by
@@ -689,26 +422,6 @@ export const CONTENT_WIDTH_CH: Record<ContentWidth, string> = {
   wide: '90ch',
   full: 'none',
 };
-
-/**
- * How presentation mode is told where one slide ends.
- *
- * `rule` is the convention every markdown presenter already uses — Marp,
- * reveal.js, remark, Deckset and Pandoc all cut on `---` — and it is the only
- * one that is *authored*: the writer put the break exactly where they wanted
- * it. Heading splitting is a heuristic imposed on a document that was never
- * written as a deck, which is why it is not the default on its own.
- *
- * It is also why the default is neither: almost no README carries a single
- * `---`, and presenting one as a single wall of text is a worse answer than
- * cutting at its section headings. `auto` takes the author's breaks when there
- * are any and falls back to the outline when there are none.
- */
-export const SLIDE_SPLIT_OPTIONS: ReadonlyArray<Option<SlideSplit>> = [
-  { value: 'auto', label: 'Automatic' },
-  { value: 'rule', label: 'Horizontal rules' },
-  { value: 'heading', label: 'Headings' },
-];
 
 export const FONT_SIZE_RANGE = { min: 12, max: 24, step: 1 };
 export const LINE_HEIGHT_RANGE = { min: 1.3, max: 2.1, step: 0.05 };
@@ -785,493 +498,25 @@ export interface ThemePreset {
 }
 
 /**
- * The built-in palettes.
+ * Every preset id, in the order they are offered.
  *
- * Two rules shaped every value here, and neither is taste:
- *
- *   Contrast is a correctness property. Body text, muted text, links and every
- *   syntax token clear WCAG AA (4.5:1) against the surface they are actually
- *   drawn on — the page for prose, `surface` for code blocks, the diff
- *   backgrounds for additions and deletions. `high-contrast` clears AAA (7:1).
- *   The ratios are computed, not judged: `test/theme-presets.test.ts` recomputes
- *   all of them on every run, so a preset added later cannot ship failing.
- *
- *   That is also why the borrowed palettes are not verbatim. Solarized, Nord and
- *   Gruvbox were all designed against a lower bar, and several of their accents
- *   land near 3:1 on their own backgrounds. Hue and character are kept; the
- *   lightness of a failing colour is moved until it passes. Where a family ships
- *   only one polarity (Nord is a dark theme), the other half is built from the
- *   same named palette rather than invented — Nord's own Snow Storm greys.
+ * The ids live here and the palettes live in `lib/theme-presets.ts`. The split
+ * is not arbitrary: `themePreset` is a *setting*, so its type has to be
+ * available wherever `Settings` is, and this module imports nothing. Three
+ * hundred lines of colour belong with the code that resolves and applies them,
+ * where the contrast test already is — `THEME_PRESETS` is declared against this
+ * list, so a palette cannot be added there without an id here, or removed while
+ * an id still names it.
  */
-export const THEME_PRESETS = [
-  {
-    id: 'default',
-    label: 'Default',
-    note: "The viewer's own palette.",
-    // Mirrors the tokens in entrypoints/viewer.css. Duplicated rather than
-    // parsed out of the sheet for the same reason EXPORT_CSS is: the test
-    // runner is bare node and cannot import a stylesheet. The duplication is
-    // load-bearing in one direction only — these values are what the contrast
-    // test actually checks, so the default palette is held to the same bar as
-    // every preset instead of being grandfathered in.
-    light: {
-      bg: '#ffffff',
-      surface: '#f6f8fa',
-      'surface-alt': '#fafbfc',
-      fg: '#1f2328',
-      'fg-muted': '#5a636d',
-      border: '#d5dbe1',
-      'border-strong': '#b6bfc9',
-      accent: '#0a53be',
-      'accent-hover': '#08409a',
-      visited: '#6639ba',
-      'on-accent': '#ffffff',
-      selection: '#cfe3ff',
-      scrollbar: '#c3ccd5',
-      'mark-bg': '#fff3c4',
-      'tk-keyword': '#b3202c',
-      'tk-string': '#0a3069',
-      'tk-comment': '#5f6874',
-      'tk-number': '#0550ae',
-      'tk-title': '#7a3fd0',
-      'tk-builtin': '#8a3400',
-      'tk-tag': '#0f5c28',
-      'tk-meta': '#57606a',
-      'tk-punct': '#4a545e',
-      'tk-addition': '#0f5c28',
-      'tk-addition-bg': '#e6ffec',
-      'tk-deletion': '#8a1420',
-      'tk-deletion-bg': '#ffebe9',
-    },
-    dark: {
-      bg: '#0d1117',
-      surface: '#161b22',
-      'surface-alt': '#12171f',
-      fg: '#e6edf3',
-      'fg-muted': '#9aa4af',
-      border: '#30363d',
-      'border-strong': '#4a525c',
-      accent: '#6cb1ff',
-      'accent-hover': '#8cc4ff',
-      visited: '#c4a0ff',
-      'on-accent': '#0d1117',
-      selection: '#2d4f7c',
-      scrollbar: '#454d57',
-      'mark-bg': '#4a3a12',
-      'tk-keyword': '#ff8a80',
-      'tk-string': '#a8d5ff',
-      'tk-comment': '#9aa4af',
-      'tk-number': '#84c5ff',
-      'tk-title': '#d7b3ff',
-      'tk-builtin': '#ffb070',
-      'tk-tag': '#8ceb96',
-      'tk-meta': '#a5b1bd',
-      'tk-punct': '#c2cbd4',
-      'tk-addition': '#8ceb96',
-      'tk-addition-bg': '#10251a',
-      'tk-deletion': '#ffaba4',
-      'tk-deletion-bg': '#2b1416',
-    },
-  },
-  {
-    id: 'solarized',
-    label: 'Solarized',
-    note: 'Warm paper and deep teal, after Ethan Schoonover.',
-    light: {
-      bg: '#fdf6e3',
-      surface: '#f4ecd6',
-      'surface-alt': '#f9f2e0',
-      fg: '#073642',
-      'fg-muted': '#4a5f66',
-      border: '#ded5bd',
-      'border-strong': '#bcb49e',
-      accent: '#1a5f8a',
-      'accent-hover': '#124765',
-      visited: '#5a4fa8',
-      'on-accent': '#fdf6e3',
-      selection: '#dee7cf',
-      scrollbar: '#c8c0aa',
-      'mark-bg': '#f2e2a8',
-      'tk-keyword': '#9c1f1c',
-      'tk-string': '#1a6b64',
-      'tk-comment': '#5a6e73',
-      'tk-number': '#1a5f8a',
-      'tk-title': '#5a4fa8',
-      'tk-builtin': '#8f3510',
-      'tk-tag': '#5b6600',
-      'tk-meta': '#5c6e74',
-      'tk-punct': '#44565c',
-      'tk-addition': '#4a5b00',
-      'tk-addition-bg': '#e8eccd',
-      'tk-deletion': '#9c1f1c',
-      'tk-deletion-bg': '#f7e0d8',
-    },
-    dark: {
-      bg: '#002b36',
-      surface: '#073642',
-      'surface-alt': '#04303b',
-      fg: '#e3ddc9',
-      'fg-muted': '#a3b0ae',
-      border: '#134653',
-      'border-strong': '#2c5f6c',
-      accent: '#5fb4e5',
-      'accent-hover': '#86c9ef',
-      visited: '#a9adea',
-      'on-accent': '#002b36',
-      selection: '#0f4a58',
-      scrollbar: '#2f5f6b',
-      'mark-bg': '#5a4a12',
-      'tk-keyword': '#f5726f',
-      'tk-string': '#4fc7bb',
-      'tk-comment': '#93a1a1',
-      'tk-number': '#5fb4e5',
-      'tk-title': '#a9adea',
-      'tk-builtin': '#f2803f',
-      'tk-tag': '#a4bd28',
-      'tk-meta': '#9aa9a8',
-      'tk-punct': '#b9c2bd',
-      'tk-addition': '#a4bd28',
-      'tk-addition-bg': '#123321',
-      'tk-deletion': '#f5726f',
-      'tk-deletion-bg': '#3a1a1c',
-    },
-  },
-  {
-    id: 'nord',
-    label: 'Nord',
-    note: 'Arctic blue-greys. The light half uses Nord’s own Snow Storm.',
-    light: {
-      bg: '#eceff4',
-      surface: '#e2e7ee',
-      'surface-alt': '#e8ecf2',
-      fg: '#2e3440',
-      'fg-muted': '#4c566a',
-      border: '#d2d9e3',
-      'border-strong': '#aeb8c8',
-      accent: '#2b6584',
-      'accent-hover': '#1f4d66',
-      visited: '#7a4b7d',
-      'on-accent': '#eceff4',
-      selection: '#d3dbe6',
-      scrollbar: '#b9c2d0',
-      'mark-bg': '#ecdcb0',
-      'tk-keyword': '#58668f',
-      'tk-string': '#4a6a3e',
-      'tk-comment': '#5b6478',
-      'tk-number': '#2b6584',
-      'tk-title': '#2f6b7c',
-      'tk-builtin': '#8a5320',
-      'tk-tag': '#4a6a3e',
-      'tk-meta': '#5b6478',
-      'tk-punct': '#414c5e',
-      'tk-addition': '#3f6a3a',
-      'tk-addition-bg': '#dfe9d8',
-      'tk-deletion': '#9d3a3a',
-      'tk-deletion-bg': '#f0dcdc',
-    },
-    dark: {
-      bg: '#2e3440',
-      surface: '#3b4252',
-      'surface-alt': '#343b49',
-      fg: '#eceff4',
-      'fg-muted': '#b5bfd0',
-      border: '#434c5e',
-      'border-strong': '#5a657c',
-      accent: '#88c0d0',
-      'accent-hover': '#a3d2df',
-      visited: '#c9a3cd',
-      'on-accent': '#2e3440',
-      selection: '#4c566a',
-      scrollbar: '#59637a',
-      'mark-bg': '#5c5230',
-      'tk-keyword': '#9fb0dd',
-      'tk-string': '#a3be8c',
-      'tk-comment': '#a4aec0',
-      'tk-number': '#c3a5bd',
-      'tk-title': '#88c0d0',
-      'tk-builtin': '#ebcb8b',
-      'tk-tag': '#8fbcbb',
-      'tk-meta': '#aab4c6',
-      'tk-punct': '#d8dee9',
-      'tk-addition': '#a3be8c',
-      'tk-addition-bg': '#333f34',
-      'tk-deletion': '#e08b86',
-      'tk-deletion-bg': '#453236',
-    },
-  },
-  {
-    id: 'gruvbox',
-    label: 'Gruvbox',
-    note: 'Retro, low-saturation, high warmth.',
-    light: {
-      bg: '#fbf1c7',
-      surface: '#f2e5bc',
-      'surface-alt': '#f7ebc4',
-      fg: '#3c3836',
-      'fg-muted': '#5c5147',
-      border: '#e4d5a8',
-      'border-strong': '#bdae87',
-      accent: '#076678',
-      'accent-hover': '#054b58',
-      visited: '#8f3f71',
-      'on-accent': '#fbf1c7',
-      selection: '#e6dcae',
-      scrollbar: '#c8b98f',
-      'mark-bg': '#efd88a',
-      'tk-keyword': '#9d0006',
-      'tk-string': '#5f6300',
-      'tk-comment': '#6b6054',
-      'tk-number': '#8f3f71',
-      'tk-title': '#076678',
-      'tk-builtin': '#8f4508',
-      'tk-tag': '#3d7151',
-      'tk-meta': '#6b6054',
-      'tk-punct': '#4a4340',
-      'tk-addition': '#4f6a2f',
-      'tk-addition-bg': '#e6e6b0',
-      'tk-deletion': '#9d0006',
-      'tk-deletion-bg': '#f3d9c0',
-    },
-    dark: {
-      bg: '#282828',
-      surface: '#32302f',
-      'surface-alt': '#2d2b2a',
-      fg: '#ebdbb2',
-      'fg-muted': '#bdae93',
-      border: '#3c3836',
-      'border-strong': '#5a524c',
-      accent: '#83a598',
-      'accent-hover': '#a3c0b4',
-      visited: '#d3869b',
-      'on-accent': '#282828',
-      selection: '#504945',
-      scrollbar: '#5a524c',
-      'mark-bg': '#5c4a12',
-      'tk-keyword': '#fc6857',
-      'tk-string': '#b8bb26',
-      'tk-comment': '#a89984',
-      'tk-number': '#d3869b',
-      'tk-title': '#8ec07c',
-      'tk-builtin': '#fabd2f',
-      'tk-tag': '#83a598',
-      'tk-meta': '#bdae93',
-      'tk-punct': '#d5c4a1',
-      'tk-addition': '#b8bb26',
-      'tk-addition-bg': '#2f3320',
-      'tk-deletion': '#fb5642',
-      'tk-deletion-bg': '#3a2320',
-    },
-  },
-  {
-    id: 'high-contrast',
-    label: 'High contrast',
-    note: 'Every colour clears WCAG AAA (7:1). No decorative tints.',
-    light: {
-      bg: '#ffffff',
-      surface: '#f2f2f2',
-      'surface-alt': '#f8f8f8',
-      fg: '#000000',
-      'fg-muted': '#3a3a3a',
-      border: '#767676',
-      'border-strong': '#3a3a3a',
-      accent: '#00459e',
-      'accent-hover': '#002d6b',
-      visited: '#6b1f8f',
-      'on-accent': '#ffffff',
-      selection: '#c7dcff',
-      scrollbar: '#767676',
-      'mark-bg': '#ffe97f',
-      'tk-keyword': '#9a0000',
-      'tk-string': '#00427a',
-      'tk-comment': '#3a3a3a',
-      'tk-number': '#00459e',
-      'tk-title': '#5c1a8a',
-      'tk-builtin': '#7a2a00',
-      'tk-tag': '#00521f',
-      'tk-meta': '#3a3a3a',
-      'tk-punct': '#2b2b2b',
-      'tk-addition': '#00521f',
-      'tk-addition-bg': '#dcf5e2',
-      'tk-deletion': '#8a0000',
-      'tk-deletion-bg': '#fde2e0',
-    },
-    dark: {
-      bg: '#000000',
-      surface: '#141414',
-      'surface-alt': '#0a0a0a',
-      fg: '#ffffff',
-      'fg-muted': '#cfcfcf',
-      border: '#8a8a8a',
-      'border-strong': '#cfcfcf',
-      accent: '#8ec2ff',
-      'accent-hover': '#b6d8ff',
-      visited: '#dfa8ff',
-      'on-accent': '#000000',
-      selection: '#3a4a66',
-      scrollbar: '#8a8a8a',
-      'mark-bg': '#4f4200',
-      'tk-keyword': '#ff9c93',
-      'tk-string': '#8fd8ff',
-      'tk-comment': '#c4c4c4',
-      'tk-number': '#8ec2ff',
-      'tk-title': '#e0aeff',
-      'tk-builtin': '#ffbe7a',
-      'tk-tag': '#7ee59a',
-      'tk-meta': '#c4c4c4',
-      'tk-punct': '#e0e0e0',
-      'tk-addition': '#7ee59a',
-      'tk-addition-bg': '#0d1f12',
-      'tk-deletion': '#ff9c93',
-      'tk-deletion-bg': '#24100f',
-    },
-  },
-] as const satisfies ReadonlyArray<ThemePreset>;
-
-export type ThemePresetId = (typeof THEME_PRESETS)[number]['id'];
-
-/* -------------------------------------------------------------------------- */
-/* Command palette and filters                                                 */
-/* -------------------------------------------------------------------------- */
-
-/**
- * The four kinds of thing the palette can turn up, and how each row labels
- * itself. A result that does not say what it *is* is a trap: "Export" as a
- * heading in the document and "Export as HTML" the command look identical in a
- * list, and only one of them does anything when you press Enter.
- */
-export const PALETTE_SOURCES = {
-  command: 'Command',
-  heading: 'Heading',
-  file: 'File',
-  setting: 'Setting',
-} as const;
-
-export type PaletteSource = keyof typeof PALETTE_SOURCES;
-
-/** The order sources are grouped in when the query is empty. */
-export const PALETTE_SOURCE_ORDER: ReadonlyArray<PaletteSource> = [
-  'command',
-  'setting',
-  'heading',
-  'file',
-];
-
-/**
- * Every command, as a description only.
- *
- * Deliberately no handlers here: exporting, opening a folder and toggling the
- * raw view are all owned by components the palette has no reference to, so a
- * command is a row of text plus an id, and `lib/commands.ts` pairs the id with
- * whatever the shell was able to supply. A command whose capability is missing
- * is dropped from the list rather than rendered dead — see `buildCommands`.
- *
- * `keywords` is matched but never shown, so a reader who thinks "diff" finds
- * "Compare files" and one who thinks "pdf" finds "Print".
- */
-export const PALETTE_COMMANDS = [
-  { id: 'toggle-theme', title: 'Toggle theme', keywords: 'dark light appearance colour color' },
-  { id: 'toggle-toc', title: 'Toggle sidebar', keywords: 'toc outline contents table navigation' },
-  { id: 'toggle-raw', title: 'Toggle raw text', keywords: 'source markdown rendered plain' },
-  { id: 'export-html', title: 'Export as HTML', keywords: 'save download file web page' },
-  { id: 'export-docx', title: 'Export as Word', keywords: 'docx save download file document' },
-  { id: 'print', title: 'Print', keywords: 'pdf paper printer' },
-  { id: 'open-folder', title: 'Open folder…', keywords: 'files browse directory local disk' },
-  { id: 'compare-files', title: 'Compare files…', keywords: 'diff difference against changes' },
-  { id: 'change-font', title: 'Change font', keywords: 'typeface serif sans mono family' },
-  { id: 'text-larger', title: 'Increase text size', keywords: 'font bigger zoom larger' },
-  { id: 'text-smaller', title: 'Decrease text size', keywords: 'font smaller zoom shrink' },
-  { id: 'toggle-live-reload', title: 'Toggle auto-refresh', keywords: 'live reload watch update' },
-  { id: 'open-settings', title: 'Open settings…', keywords: 'options preferences configure' },
+export const THEME_PRESET_IDS = [
+  'default',
+  'solarized',
+  'nord',
+  'gruvbox',
+  'high-contrast',
 ] as const;
 
-export type PaletteCommandId = (typeof PALETTE_COMMANDS)[number]['id'];
-
-/**
- * A setting the palette can act on, and the values it moves between.
- *
- * `options` absent means the setting is a boolean and the row flips it; present
- * means the row advances to the next value in this list and wraps. Either way a
- * Setting row *changes something* — that is the consistency rule, and it is why
- * "Open settings…" is a Command rather than a thirteenth Setting row.
- */
-export interface PaletteSetting {
-  key: keyof Settings;
-  label: string;
-  /** Matched but not shown, like `PALETTE_COMMANDS.keywords`. */
-  keywords?: string;
-  /** Values to cycle through. Omitted for an on/off setting. */
-  options?: ReadonlyArray<{ value: string; label: string }>;
-}
-
-export const PALETTE_SETTINGS: ReadonlyArray<PaletteSetting> = [
-  { key: 'theme', label: 'Theme', keywords: 'dark light auto appearance', options: THEME_OPTIONS },
-  {
-    key: 'themePreset',
-    label: 'Colour preset',
-    keywords: 'palette solarized nord gruvbox contrast',
-    // Derived rather than restated, so a preset added above appears here too.
-    options: THEME_PRESETS.map((preset) => ({ value: preset.id, label: preset.label })),
-  },
-  {
-    key: 'fontFamily',
-    label: 'Font',
-    keywords: 'typeface serif sans mono',
-    options: FONT_FAMILY_OPTIONS,
-  },
-  {
-    key: 'contentWidth',
-    label: 'Content width',
-    keywords: 'measure narrow wide column line length',
-    options: CONTENT_WIDTH_OPTIONS,
-  },
-  { key: 'showToc', label: 'Sidebar', keywords: 'toc outline contents' },
-  { key: 'liveReload', label: 'Auto-refresh', keywords: 'live reload watch' },
-  { key: 'rememberScroll', label: 'Remember scroll position', keywords: 'restore place resume' },
-  { key: 'mermaid', label: 'Mermaid diagrams', keywords: 'graph chart flowchart' },
-  { key: 'math', label: 'Math rendering', keywords: 'katex tex latex formula equation' },
-  { key: 'lightbox', label: 'Image lightbox', keywords: 'picture zoom full size' },
-  { key: 'externalLinks', label: 'External link markers', keywords: 'outbound indicator' },
-  { key: 'presentation', label: 'Presentation mode', keywords: 'slides deck present' },
-  {
-    key: 'slideSplit',
-    label: 'Slide breaks',
-    keywords: 'presentation split rule heading',
-    options: SLIDE_SPLIT_OPTIONS,
-  },
-  { key: 'readingStats', label: 'Reading time', keywords: 'word count statistics' },
-  { key: 'readingProgress', label: 'Reading progress bar', keywords: 'scroll indicator' },
-  { key: 'headingFold', label: 'Collapsible headings', keywords: 'fold collapse sections' },
-];
-
-/**
- * Rows the palette renders at once.
- *
- * Low on purpose. Unlike the search panel — which is counting occurrences and
- * has to be able to say "2,000" — a palette that offers sixty answers has
- * already failed to answer; the reader types another character instead.
- */
-export const PALETTE_RESULT_LIMIT = 60;
-
-/** Rows a sidebar filter box renders at once. Higher: a file tree is a list, not an answer. */
-export const FILTER_RESULT_LIMIT = 300;
-
-/**
- * Fuse.js scoring, shared by the palette and both filter boxes.
- *
- * `ignoreLocation` is the load-bearing one. Fuse's default scoring decays with
- * distance from the start of the string, which is right for prose and wrong for
- * every list here: `docs/reference/settings.md` would score its own basename
- * near zero because it is forty characters in.
- *
- * The threshold is deliberately tighter than Fuse's 0.6 default. A palette is
- * judged on its first row, and 0.6 admits matches with no shared prefix at all.
- */
-export const FUZZY_OPTIONS = {
-  includeScore: true,
-  ignoreLocation: true,
-  threshold: 0.4,
-  minMatchCharLength: 1,
-} as const;
+export type ThemePresetId = (typeof THEME_PRESET_IDS)[number];
 
 /* -------------------------------------------------------------------------- */
 /* Settings export/import                                                      */
@@ -1354,63 +599,6 @@ export const ALERT_MARKERS = [
 ] as const;
 
 export type AlertKind = Lowercase<(typeof ALERT_MARKERS)[number]>;
-
-/**
- * `:::name` containers, as MkDocs, Docusaurus and VitePress spell them.
- *
- * Each maps onto one of the five alert kinds rather than introducing a palette
- * of its own: `:::danger` and `> [!CAUTION]` mean the same thing to a reader,
- * and a document that uses both should not look like it uses two systems. The
- * title is what appears when the author writes no title of their own.
- */
-export const CONTAINER_TYPES: ReadonlyArray<{
-  name: string;
-  title: string;
-  kind: AlertKind;
-}> = [
-  { name: 'note', title: 'Note', kind: 'note' },
-  { name: 'info', title: 'Info', kind: 'note' },
-  { name: 'tip', title: 'Tip', kind: 'tip' },
-  { name: 'important', title: 'Important', kind: 'important' },
-  { name: 'warning', title: 'Warning', kind: 'warning' },
-  { name: 'caution', title: 'Caution', kind: 'caution' },
-  { name: 'danger', title: 'Danger', kind: 'caution' },
-];
-
-/**
- * MultiMarkdown table extensions. Only the ones that are strict supersets of
- * GFM are on, so a table that parsed before parses identically now.
- *
- * `multibody` is off because it is not a superset, and the way it fails is
- * silent: it treats a blank line inside a table as a `<tbody>` break, which
- * means two ordinary GFM tables written back to back become one table whose
- * second header row renders as a row of literal `---` cells. Two tables in a
- * row is far commoner in a README than multiple row groups in one.
- *
- * `autolabel` is off for a duller reason: it mints an `id` on every captioned
- * table out of the caption text, in the same namespace as the heading slugs,
- * and nothing in the viewer links to a table.
- */
-export const MULTIMD_TABLE_OPTIONS = {
-  multiline: true,
-  rowspan: true,
-  headerless: true,
-  multibody: false,
-  autolabel: false,
-};
-
-/**
- * What `[[Page Name]]` resolves to.
- *
- * A relative `.md` sibling, because that is what the link means in every folder
- * of notes that uses the syntax — and because a relative href is the one form the
- * browser resolves correctly for a `file://` note and a served one alike.
- * Spaces are kept rather than turned into underscores: the target is a real file
- * whose name is what the author typed. `lib/markdown.ts` describes what is left
- * unresolved for documents opened through a directory handle.
- */
-export const WIKILINK_SUFFIX = '.md';
-export const WIKILINK_CLASS = 'mdv-wikilink';
 
 /**
  * Checked against DOMPurify 3.4.12: its defaults already keep the two bits of

@@ -26,7 +26,20 @@
 import type MarkdownIt from 'markdown-it';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
 
-import { MARKDOWN_EXTENSIONS, WIKILINK_CLASS, WIKILINK_SUFFIX } from '../../lib/config.ts';
+import { MARKDOWN_EXTENSIONS } from '../../lib/config.ts';
+
+/**
+ * What `[[Page Name]]` resolves to.
+ *
+ * A relative `.md` sibling, because that is what the link means in every folder
+ * of notes that uses the syntax — and because a relative href is the one form the
+ * browser resolves correctly for a `file://` note and a served one alike.
+ * Spaces are kept rather than turned into underscores: the target is a real file
+ * whose name is what the author typed. `lib/markdown.ts` describes what is left
+ * unresolved for documents opened through a directory handle.
+ */
+export const WIKILINK_SUFFIX = '.md';
+export const WIKILINK_CLASS = 'mdv-wikilink';
 import { PLUGIN_API_VERSION, type Plugin } from '../../lib/plugins/types.ts';
 import { slugify } from '../../lib/slug.ts';
 

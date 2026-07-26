@@ -12,7 +12,23 @@
  * a jsdom element passed in.
  */
 
-import { READING_CJK_PER_MINUTE, READING_WORDS_PER_MINUTE } from './config.ts';
+/**
+ * Reading speed for whitespace-delimited prose, in words per minute.
+ *
+ * Middling silent-reading rates for adults land between 200 and 260 wpm on
+ * ordinary text; documentation sits at the slower end of that, so this is
+ * deliberately not the flattering number.
+ */
+export const READING_WORDS_PER_MINUTE = 220;
+
+/**
+ * Reading speed for CJK text, in *characters* per minute.
+ *
+ * A separate rate because a Chinese, Japanese or Korean character carries far
+ * more than a Latin one — timing them at the same rate as words would report a
+ * page of Chinese as a ten-second read.
+ */
+export const READING_CJK_PER_MINUTE = 480;
 
 export interface ReadingStats {
   /**

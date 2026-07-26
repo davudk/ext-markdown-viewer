@@ -15,15 +15,13 @@ import {
   buildSettingItems,
   createMatcher,
   PALETTE_FIELDS,
-  type PaletteFile,
-  type PaletteItem,
-} from '../../lib/commands.ts';
-import {
-  FOLDER_DOCUMENT_SCHEME,
   PALETTE_RESULT_LIMIT,
   PALETTE_SOURCES,
+  type PaletteFile,
+  type PaletteItem,
   type PaletteSource,
-} from '../../lib/config.ts';
+} from '../../lib/commands.ts';
+import { FOLDER_DOCUMENT_SCHEME } from '../../lib/config.ts';
 import { listRecentDocuments } from '../../lib/document-state.ts';
 import { useDocument, usePlugin, usePluginHost } from '../../lib/plugins/react.tsx';
 import type { Command } from '../../lib/plugins/types.ts';

@@ -9,7 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 
-import { SEARCH_DOCUMENT_KEY, SEARCH_MATCH_LIMIT } from '../../lib/config.ts';
+import { SEARCH_DOCUMENT_KEY, SEARCH_MATCH_LIMIT } from '../../lib/search.ts';
 import type { Heading } from '../../lib/markdown.ts';
 import { useDocument, usePlugin, usePluginHost } from '../../lib/plugins/react.tsx';
 import { isFailure, searchClient } from '../../lib/search-client.ts';

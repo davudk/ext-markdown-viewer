@@ -18,19 +18,156 @@
 import type { IFuseOptions } from 'fuse.js';
 
 import {
+  CONTENT_WIDTH_OPTIONS,
   FONT_FAMILY_OPTIONS,
   FONT_SIZE_RANGE,
-  FUZZY_OPTIONS,
-  PALETTE_COMMANDS,
-  PALETTE_SETTINGS,
   THEME_OPTIONS,
   type ExportFormat,
-  type PaletteCommandId,
-  type PaletteSetting,
-  type PaletteSource,
   type Settings,
 } from './config.ts';
 import type { Heading } from './markdown.ts';
+import { THEME_PRESETS } from './theme-presets.ts';
+
+/* -------------------------------------------------------------------------- */
+/* The palette's own data                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The four kinds of thing the palette can turn up, and how each row labels
+ * itself. A result that does not say what it *is* is a trap: "Export" as a
+ * heading in the document and "Export as HTML" the command look identical in a
+ * list, and only one of them does anything when you press Enter.
+ */
+export const PALETTE_SOURCES = {
+  command: 'Command',
+  heading: 'Heading',
+  file: 'File',
+  setting: 'Setting',
+} as const;
+
+export type PaletteSource = keyof typeof PALETTE_SOURCES;
+
+/** The order sources are grouped in when the query is empty. */
+export const PALETTE_SOURCE_ORDER: ReadonlyArray<PaletteSource> = [
+  'command',
+  'setting',
+  'heading',
+  'file',
+];
+
+/**
+ * Every command, as a description only.
+ *
+ * Deliberately no handlers here: exporting, opening a folder and toggling the
+ * raw view are all owned by components the palette has no reference to, so a
+ * command is a row of text plus an id, and `buildCommands` below pairs the id
+ * with whatever the shell was able to supply. A command whose capability is
+ * missing is dropped from the list rather than rendered dead.
+ *
+ * `keywords` is matched but never shown, so a reader who thinks "diff" finds
+ * "Compare files" and one who thinks "pdf" finds "Print".
+ *
+ * "Toggle sidebar" and "Toggle auto-refresh" used to be here. Both flipped a
+ * global setting that no longer exists: whether there is a sidebar at all, and
+ * whether the document is watched, are each a plugin's enabled state now, which
+ * is the plugin host's to change and not a settings patch this module can
+ * write. A plugin that wants a row registers it through `ctx.commands.add`.
+ */
+export const PALETTE_COMMANDS = [
+  { id: 'toggle-theme', title: 'Toggle theme', keywords: 'dark light appearance colour color' },
+  { id: 'toggle-raw', title: 'Toggle raw text', keywords: 'source markdown rendered plain' },
+  { id: 'export-html', title: 'Export as HTML', keywords: 'save download file web page' },
+  { id: 'export-docx', title: 'Export as Word', keywords: 'docx save download file document' },
+  { id: 'print', title: 'Print', keywords: 'pdf paper printer' },
+  { id: 'open-folder', title: 'Open folder…', keywords: 'files browse directory local disk' },
+  { id: 'compare-files', title: 'Compare files…', keywords: 'diff difference against changes' },
+  { id: 'change-font', title: 'Change font', keywords: 'typeface serif sans mono family' },
+  { id: 'text-larger', title: 'Increase text size', keywords: 'font bigger zoom larger' },
+  { id: 'text-smaller', title: 'Decrease text size', keywords: 'font smaller zoom shrink' },
+  { id: 'open-settings', title: 'Open settings…', keywords: 'options preferences configure' },
+] as const;
+
+export type PaletteCommandId = (typeof PALETTE_COMMANDS)[number]['id'];
+
+/**
+ * A setting the palette can act on, and the values it moves between.
+ *
+ * Choosing the row advances to the next value in `options` and wraps. A Setting
+ * row *changes something* — that is the consistency rule, and it is why "Open
+ * settings…" is a Command rather than one more Setting row.
+ *
+ * Only *global* settings appear here, because those are the only ones this
+ * module can write: a plugin's own settings live under its id and are reached
+ * through its context, not through a `Partial<Settings>` patch.
+ */
+export interface PaletteSetting {
+  key: keyof Settings;
+  label: string;
+  /** Matched but not shown, like `PALETTE_COMMANDS.keywords`. */
+  keywords?: string;
+  /**
+   * Values to cycle through. Required, not optional: every global setting is
+   * either an enumeration — which this cycles — or a number, which is a
+   * Command with its own step and bounds (`text-larger`, `text-smaller`). The
+   * on/off branch this used to carry existed for `showToc` and its siblings,
+   * which are plugin enabled-state now and not something a settings patch can
+   * reach.
+   */
+  options: ReadonlyArray<{ value: string; label: string }>;
+}
+
+export const PALETTE_SETTINGS: ReadonlyArray<PaletteSetting> = [
+  { key: 'theme', label: 'Theme', keywords: 'dark light auto appearance', options: THEME_OPTIONS },
+  {
+    key: 'themePreset',
+    label: 'Colour preset',
+    keywords: 'palette solarized nord gruvbox contrast',
+    // Derived rather than restated, so a preset added later appears here too.
+    options: THEME_PRESETS.map((preset) => ({ value: preset.id, label: preset.label })),
+  },
+  {
+    key: 'fontFamily',
+    label: 'Font',
+    keywords: 'typeface serif sans mono',
+    options: FONT_FAMILY_OPTIONS,
+  },
+  {
+    key: 'contentWidth',
+    label: 'Content width',
+    keywords: 'measure narrow wide column line length',
+    options: CONTENT_WIDTH_OPTIONS,
+  },
+];
+
+/**
+ * Rows the palette renders at once.
+ *
+ * Low on purpose. Unlike the search panel — which is counting occurrences and
+ * has to be able to say "2,000" — a palette that offers sixty answers has
+ * already failed to answer; the reader types another character instead.
+ */
+export const PALETTE_RESULT_LIMIT = 60;
+
+/** Rows a sidebar filter box renders at once. Higher: a file tree is a list, not an answer. */
+export const FILTER_RESULT_LIMIT = 300;
+
+/**
+ * Fuse.js scoring, shared by the palette and both filter boxes.
+ *
+ * `ignoreLocation` is the load-bearing one. Fuse's default scoring decays with
+ * distance from the start of the string, which is right for prose and wrong for
+ * every list here: `docs/reference/settings.md` would score its own basename
+ * near zero because it is forty characters in.
+ *
+ * The threshold is deliberately tighter than Fuse's 0.6 default. A palette is
+ * judged on its first row, and 0.6 admits matches with no shared prefix at all.
+ */
+export const FUZZY_OPTIONS = {
+  includeScore: true,
+  ignoreLocation: true,
+  threshold: 0.4,
+  minMatchCharLength: 1,
+} as const;
 
 /* -------------------------------------------------------------------------- */
 /* Items                                                                       */
@@ -318,8 +455,6 @@ function labelOf(
   return options.find((option) => option.value === current)?.label ?? current;
 }
 
-const onOff = (on: boolean) => (on ? 'On' : 'Off');
-
 /**
  * Every command that can actually run, in the order `PALETTE_COMMANDS` declares.
  *
@@ -348,10 +483,6 @@ export function buildCommands(context: CommandContext): PaletteItem[] {
     applySettings({
       theme: nextValue(THEME_OPTIONS, settings.theme).value as Settings['theme'],
     });
-  });
-
-  add('toggle-toc', onOff(settings.showToc), () => {
-    applySettings({ showToc: !settings.showToc });
   });
 
   if (context.toggleRaw) {
@@ -407,10 +538,6 @@ export function buildCommands(context: CommandContext): PaletteItem[] {
     });
   }
 
-  add('toggle-live-reload', onOff(settings.liveReload), () => {
-    applySettings({ liveReload: !settings.liveReload });
-  });
-
   if (context.openSettings) {
     const openSettings = context.openSettings;
     add('open-settings', undefined, openSettings);
@@ -443,31 +570,17 @@ function toSettingItem(
   settings: Settings,
   applySettings: (patch: Partial<Settings>) => void,
 ): PaletteItem {
-  const current = settings[setting.key];
+  const value = String(settings[setting.key]);
+  const next = nextValue(setting.options, value);
 
-  if (setting.options) {
-    const value = String(current);
-    const next = nextValue(setting.options, value);
-    return {
-      id: `setting:${setting.key}`,
-      source: 'setting',
-      title: setting.label,
-      detail: `Now ${labelOf(setting.options, value)} — switch to ${next.label}`,
-      keywords: setting.keywords,
-      hint: labelOf(setting.options, value),
-      run: () => applySettings({ [setting.key]: next.value } as Partial<Settings>),
-    };
-  }
-
-  const on = current === true;
   return {
     id: `setting:${setting.key}`,
     source: 'setting',
     title: setting.label,
-    detail: on ? 'On — turn it off' : 'Off — turn it on',
+    detail: `Now ${labelOf(setting.options, value)} — switch to ${next.label}`,
     keywords: setting.keywords,
-    hint: onOff(on),
-    run: () => applySettings({ [setting.key]: !on } as Partial<Settings>),
+    hint: labelOf(setting.options, value),
+    run: () => applySettings({ [setting.key]: next.value } as Partial<Settings>),
   };
 }
 

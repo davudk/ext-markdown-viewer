@@ -8,13 +8,6 @@ import {
 } from 'react';
 
 import {
-  SEARCH_DEBOUNCE_MS,
-  SEARCH_FILE_KEY_PREFIX,
-  SEARCH_FILE_LIMIT,
-  SEARCH_RESULT_LIMIT,
-  SEARCH_SOURCE_KEY,
-} from '@/lib/config';
-import {
   folderDocumentUrl,
   folderPermission,
   readDirectory,
@@ -22,7 +15,15 @@ import {
   recallFolder,
 } from '@/lib/folder';
 import type { Heading } from '@/lib/markdown';
-import type { DetailedMatch, SearchOptions } from '@/lib/search';
+import {
+  SEARCH_DEBOUNCE_MS,
+  SEARCH_FILE_KEY_PREFIX,
+  SEARCH_FILE_LIMIT,
+  SEARCH_RESULT_LIMIT,
+  SEARCH_SOURCE_KEY,
+  type DetailedMatch,
+  type SearchOptions,
+} from '@/lib/search';
 import { isFailure, searchClient } from '@/lib/search-client';
 
 import type { FolderStatus, OpenedDocument } from '@/plugins/files/types';

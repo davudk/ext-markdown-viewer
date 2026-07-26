@@ -19,7 +19,12 @@
  * now, in `SidebarState.restore`, rather than against a list in lib/config.ts.
  */
 
-import { SIDEBAR_STATE_KEY } from '../../lib/config.ts';
+/**
+ * The chrome.storage.local key this module owns. Kept out of `Settings`: it is
+ * not a preference, and it is not the sidebar plugin's settings either — see
+ * the header above for why.
+ */
+export const SIDEBAR_STATE_KEY = 'sidebar';
 
 export async function loadSidebarTab(): Promise<string | null> {
   try {

@@ -18,12 +18,12 @@ import { JSDOM } from 'jsdom';
 
 import {
   DIFF_BRIDGE_KEY,
-  DIFF_MAX_LINES,
   DIFF_READY_EVENT,
 } from '../lib/config.ts';
 import {
   blockRows,
   changeBlocks,
+  DIFF_MAX_LINES,
   collapseContext,
   compareRendered,
   compareSource,

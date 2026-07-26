@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEvent } from 'react';
 
-import { createMatcher, type FuzzyField } from '../../lib/commands.ts';
-import { FILTER_RESULT_LIMIT } from '../../lib/config.ts';
+import { createMatcher, FILTER_RESULT_LIMIT, type FuzzyField } from '../../lib/commands.ts';
 import type { Heading } from '../../lib/markdown.ts';
 
 import { FilterBox, useFuzzy } from '../../components/FilterBox.tsx';

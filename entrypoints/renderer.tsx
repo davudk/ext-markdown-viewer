@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { Viewer } from '@/components/Viewer';
 import { VIEWER_ROOT_ID, VIEWER_THEME_DATASET_KEY } from '@/lib/config';
 import { isCandidateUrl, isMarkdownContentType } from '@/lib/detect';
+import { mirrorPluginFailures } from '@/lib/plugin-failures';
+import { createGlobalSettings } from '@/lib/plugins/global-settings';
 import {
   CORE_REGIONS,
   PLUGINS,
@@ -76,6 +78,12 @@ export default defineUnlistedScript(() => {
         plugins: PLUGINS,
         storage: chromeStorage(),
         document: documentHandle,
+        // Theme and typography describe the document rather than any feature,
+        // so several plugins read them and the options page writes them. Without
+        // this the host answered `ctx.global` from its own storage bag, which
+        // nothing bridged to the viewer's settings — three plugins had each
+        // grown the same workaround before it was noticed.
+        globalSettings: createGlobalSettings(settings),
       });
 
       // The shell publishes the regions that follow from its own layout, before
@@ -85,6 +93,11 @@ export default defineUnlistedScript(() => {
       for (const region of CORE_REGIONS) plugins.regions.declare(region);
 
       await plugins.start();
+
+      // A plugin that threw is disabled and gone from the page. The options
+      // page has no host of its own, so this is the only route by which it can
+      // tell the reader why a feature they left switched on is not there.
+      mirrorPluginFailures(plugins);
 
       // React 19 commits asynchronously by default; flushSync makes the markup
       // exist before `reveal()` runs, so there is no blank frame between the

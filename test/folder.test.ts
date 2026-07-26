@@ -14,8 +14,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { FOLDER_ENTRY_LIMIT, SUPPORTED_PROTOCOLS } from '../lib/config.ts';
+import { SUPPORTED_PROTOCOLS } from '../lib/config.ts';
 import {
+  FOLDER_ENTRY_LIMIT,
   fileUrlBaseCandidates,
   fileUrlFor,
   folderDocumentPath,

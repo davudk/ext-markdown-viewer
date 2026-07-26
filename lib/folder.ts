@@ -28,15 +28,37 @@
  * Nothing here fetches. Reading a `FileSystemFileHandle` is a disk read.
  */
 
-import {
-  FOLDER_DB_NAME,
-  FOLDER_DOCUMENT_SCHEME,
-  FOLDER_ENTRY_LIMIT,
-  FOLDER_HANDLE_KEY,
-  FOLDER_SKIP_DIRECTORIES,
-  FOLDER_STORE_NAME,
-  MARKDOWN_EXTENSIONS,
-} from './config.ts';
+import { FOLDER_DOCUMENT_SCHEME, MARKDOWN_EXTENSIONS } from './config.ts';
+
+/* -------------------------------------------------------------------------- */
+/* Limits and storage                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Directories never listed, whatever they contain. Dotted names are excluded by
+ * rule rather than by list; these two are the ones that are not dotted and are
+ * large enough that expanding one is indistinguishable from a hang.
+ */
+export const FOLDER_SKIP_DIRECTORIES = ['node_modules', '.git'];
+
+/**
+ * Entries kept from a single directory. A generated output folder can hold tens
+ * of thousands of files, and the cost is not the read — it is the rows. The
+ * browser reports the overflow rather than pretending the directory ends here.
+ */
+export const FOLDER_ENTRY_LIMIT = 500;
+
+/**
+ * Where a picked directory handle is kept.
+ *
+ * IndexedDB, because a `FileSystemDirectoryHandle` is structured-cloneable but
+ * not JSON — chrome.storage cannot hold one. What this does and does not
+ * survive is below; the short version is that a content script writes under the
+ * *page's* origin, so this is per-origin storage, not per-extension.
+ */
+export const FOLDER_DB_NAME = 'mdv-folder';
+export const FOLDER_STORE_NAME = 'handles';
+export const FOLDER_HANDLE_KEY = 'current';
 
 /* -------------------------------------------------------------------------- */
 /* Types TypeScript's lib.dom does not ship                                    */

@@ -15,7 +15,12 @@
 
 import type { ComponentType } from 'react';
 
-import { SEARCH_ALL_KEY } from '../../lib/config.ts';
+/**
+ * Full-document search, held apart from `SHORTCUTS` for the same reason the
+ * command palette is: it is only ever matched with ctrl/cmd *and* shift held.
+ * `f` on its own is a character, and quick find already owns the unshifted form.
+ */
+export const SEARCH_ALL_KEY = 'f';
 import { PLUGIN_API_VERSION, type Plugin } from '../../lib/plugins/types.ts';
 import { SIDEBAR_TAB_REGION, type SidebarTab } from '../sidebar/tabs.ts';
 

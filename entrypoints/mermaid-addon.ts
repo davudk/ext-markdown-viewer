@@ -28,16 +28,47 @@ import mermaid, { type MermaidConfig } from 'mermaid';
 import createPanZoom, { type PanZoom } from 'panzoom';
 
 import {
-  MERMAID_EXPORT_BASENAME,
-  MERMAID_EXPORT_FALLBACK,
   MERMAID_LANGUAGE,
-  MERMAID_PAN_STEP_PX,
-  MERMAID_PNG_MAX_PX,
-  MERMAID_PNG_SCALE,
-  MERMAID_ZOOM,
   VIEWER_ROOT_ID,
   VIEWER_THEME_DATASET_KEY,
 } from '@/lib/config';
+
+/* -------------------------------------------------------------------------- */
+/* Pan, zoom and export                                                        */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Every value below is read here and nowhere else, so it lives here rather than
+ * in `lib/config.ts`: a diagram's zoom range is a fact about this add-on's
+ * viewport, not a shared identifier any other context needs.
+ */
+
+/**
+ * Zoom limits and the multiplier one button press or `+`/`-` applies.
+ *
+ * `min` is below 1 because the reason to zoom a diagram out is that it is
+ * already wider than the measure; `max` is the point past which the vectors
+ * stop carrying more than the screen can show.
+ */
+const MERMAID_ZOOM = { min: 0.25, max: 12, step: 1.4 } as const;
+
+/** Pixels a diagram moves per arrow-key press. */
+const MERMAID_PAN_STEP_PX = 48;
+
+/**
+ * Retina. A diagram exported at 1× is a screenshot of a vector drawing and
+ * looks like one the moment it is placed in anything.
+ */
+const MERMAID_PNG_SCALE = 2;
+
+/** Ceiling on either PNG dimension, so a wall-sized diagram cannot exhaust memory. */
+const MERMAID_PNG_MAX_PX = 8_192;
+
+/** Size for a diagram whose SVG carries neither a viewBox nor an explicit one. */
+const MERMAID_EXPORT_FALLBACK = { width: 960, height: 540 } as const;
+
+/** Basename of an exported diagram, before its index and extension. */
+const MERMAID_EXPORT_BASENAME = 'diagram';
 
 /** The blocks `lib/markdown.ts` passes through unhighlighted for us. */
 const BLOCK_SELECTOR = `pre > code.language-${MERMAID_LANGUAGE}`;

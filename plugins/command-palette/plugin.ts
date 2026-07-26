@@ -28,7 +28,15 @@
 import type { ComponentType } from 'react';
 
 import { buildCommands, type PaletteItem } from '../../lib/commands.ts';
-import { COMMAND_PALETTE_KEY } from '../../lib/config.ts';
+/**
+ * The command palette's key, held apart from `SHORTCUTS` because it is not one.
+ *
+ * `SHORTCUTS` is a table of unmodified single keys, and `useKeyboardShortcuts`
+ * refuses any event carrying a modifier — putting `k` in there would bind a bare
+ * `k` as well, which is a character in every field on the page. This is matched
+ * only with ctrl or cmd held, the way every other palette in the world spells it.
+ */
+export const COMMAND_PALETTE_KEY = 'k';
 import { Store } from '../../lib/plugins/registry.ts';
 import {
   PLUGIN_API_VERSION,

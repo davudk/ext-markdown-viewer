@@ -10,14 +10,6 @@ import {
 } from 'react';
 
 import {
-  DEFAULT_DIFF_LAYOUT,
-  DEFAULT_DIFF_MODE,
-  DIFF_LAYOUT_OPTIONS,
-  DIFF_MODE_OPTIONS,
-  type DiffLayout,
-  type DiffMode,
-} from '../../lib/config.ts';
-import {
   changeBlocks,
   collapseContext,
   compareRendered,
@@ -34,7 +26,15 @@ import { renderMarkdown } from '../../lib/markdown.ts';
 import { useDocument, usePlugin, usePluginHost } from '../../lib/plugins/react.tsx';
 import type { Teardown } from '../../lib/plugins/types.ts';
 
-import type { DiffCapability } from './plugin.ts';
+import {
+  DEFAULT_DIFF_LAYOUT,
+  DEFAULT_DIFF_MODE,
+  DIFF_LAYOUT_OPTIONS,
+  DIFF_MODE_OPTIONS,
+  type DiffCapability,
+  type DiffLayout,
+  type DiffMode,
+} from './plugin.ts';
 import './diff.css';
 
 /** Distance the menu is kept from the edge of the viewport. */

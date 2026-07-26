@@ -24,17 +24,17 @@ import {
   createMatcher,
   loadFuse,
   substringMatch,
+  PALETTE_COMMANDS,
   PALETTE_FIELDS,
+  PALETTE_SETTINGS,
+  PALETTE_SOURCES,
+  PALETTE_SOURCE_ORDER,
   type CommandContext,
   type PaletteItem,
 } from '../lib/commands.ts';
 import {
   DEFAULT_SETTINGS,
   FONT_SIZE_RANGE,
-  PALETTE_COMMANDS,
-  PALETTE_SETTINGS,
-  PALETTE_SOURCES,
-  PALETTE_SOURCE_ORDER,
   THEME_OPTIONS,
   type Settings,
 } from '../lib/config.ts';
@@ -86,7 +86,6 @@ test('a cycled setting lists its own default among its options', () => {
   // Without this a fresh install would show "Now default — switch to Solarized"
   // on a row whose value is not in the list, and the first press would jump.
   for (const setting of PALETTE_SETTINGS) {
-    if (!setting.options) continue;
     const current = String(DEFAULT_SETTINGS[setting.key]);
     assert.ok(
       setting.options.some((option) => option.value === current),
@@ -95,14 +94,12 @@ test('a cycled setting lists its own default among its options', () => {
   }
 });
 
-test('an uncycled setting is a boolean', () => {
+test('every setting row cycles, because every global setting is an enumeration', () => {
+  // The on/off branch is gone: `showToc`, `liveReload` and their siblings were
+  // the only boolean settings, and each is a plugin's enabled state now. A row
+  // with no options could not act, which is the one thing every row must do.
   for (const setting of PALETTE_SETTINGS) {
-    if (setting.options) continue;
-    assert.equal(
-      typeof DEFAULT_SETTINGS[setting.key],
-      'boolean',
-      `${setting.key} has no options but is not on/off`,
-    );
+    assert.ok(setting.options.length > 1, `${setting.key} has nothing to cycle to`);
   }
 });
 
@@ -208,13 +205,27 @@ test('toggling the theme walks the options and wraps', () => {
   assert.equal(seen[THEME_OPTIONS.length], seen[0]);
 });
 
-test('toggling the sidebar and auto-refresh flips them', () => {
-  assert.deepEqual(runCommand('toggle-toc', { ...DEFAULT_SETTINGS, showToc: true }), {
-    showToc: false,
-  });
-  assert.deepEqual(runCommand('toggle-live-reload', { ...DEFAULT_SETTINGS, liveReload: false }), {
-    liveReload: true,
-  });
+test('no command writes a setting that no longer exists', () => {
+  // "Toggle sidebar" and "Toggle auto-refresh" were commands here until the
+  // sidebar and live reload became plugins. Both wrote a global setting, so a
+  // survivor would have written a key `Settings` no longer has — accepted by
+  // storage, read by nobody.
+  const ids = new Set(PALETTE_COMMANDS.map((command) => command.id as string));
+  assert.ok(!ids.has('toggle-toc'));
+  assert.ok(!ids.has('toggle-live-reload'));
+
+  for (const item of buildCommands(fullContext())) {
+    const patches: Partial<Settings>[] = [];
+    const items = buildCommands(
+      fullContext({ applySettings: (patch) => patches.push(patch) }),
+    );
+    items.find((entry) => entry.id === item.id)?.run();
+    for (const patch of patches) {
+      for (const key of Object.keys(patch)) {
+        assert.ok(key in DEFAULT_SETTINGS, `${item.id} wrote unknown setting ${key}`);
+      }
+    }
+  }
 });
 
 test('text size steps stay inside the range', () => {
@@ -286,8 +297,8 @@ test('every setting gets exactly one row, and every row acts', () => {
 });
 
 test('a cycled setting wraps back to where it started', () => {
-  const setting = PALETTE_SETTINGS.find((entry) => entry.options);
-  assert.ok(setting?.options);
+  const setting = PALETTE_SETTINGS[0];
+  assert.ok(setting.options);
 
   let value = String(DEFAULT_SETTINGS[setting.key]);
   for (let step = 0; step < setting.options.length; step += 1) {
