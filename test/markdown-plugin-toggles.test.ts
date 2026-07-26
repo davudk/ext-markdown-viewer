@@ -146,7 +146,7 @@ test('mermaid fences: never highlighted when enabled, ordinary code when not', (
 test('wikilinks: a relative link when enabled, brackets when not', () => {
   const { on, off } = bothWays('markdown-wikilinks', 'See [[Release Notes]].');
 
-  assert.ok(on.includes('href="Release%20Notes.md"'));
+  assert.ok(on.includes('href="release-notes.md"'), on);
   assert.ok(on.includes('class="mdv-wikilink"'));
 
   assert.ok(!/<a/i.test(off), 'a link was created with the plugin disabled');

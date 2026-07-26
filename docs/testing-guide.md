@@ -69,12 +69,22 @@ These are nine plugins, but they read as one thing, so test them together.
 - [ ] **2.9 Code** — highlighted per language; the unknown language renders as
       plain text rather than breaking.
 - [ ] **2.10 Math** — inline `$e^{i\pi}+1=0$` renders as a formula; the display
-      integral renders centred and larger.
+      integral renders centred and larger. This is a two-stage feature: the
+      parser marks the formula and the KaTeX add-on is injected to render it, so
+      "the TeX is showing as its own source" means the add-on never arrived.
 - [ ] **2.11 Math must not leak into code** — in the *Math* section, the code
       span, the prose dollars, and the `$ B \`c\` D $` line all stay literal.
       This one has broken before; look carefully.
-- [ ] **2.12 Diagrams** — both mermaid blocks render as diagrams, not code.
-- [ ] **2.13 Wiki links** — `[[Kitchen Sink]]` renders as a link.
+- [ ] **2.12 Diagrams** — both mermaid blocks render as diagrams, not code. Same
+      two-stage shape as math: a block still showing `graph TD` as source means
+      the mermaid add-on was never injected.
+- [ ] **2.13 Wiki links** — `[[Kitchen Sink]]` is a link whose href is
+      `kitchen-sink.md` — the title is slugged, because the file a repository
+      contains is kebab-case even when its title is not. `[[Guide.md]]` already
+      carries an extension and is left exactly as written.
+- [ ] **2.14 Inline images** — both data-URI SVGs in *Images* display. A literal
+      `![...](data:image/svg+xml;base64,…)` sitting in the text as characters
+      means the pipeline refused the URL rather than rendering it.
 
 ---
 

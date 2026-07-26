@@ -29,6 +29,7 @@ import type MarkdownIt from 'markdown-it';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';
 import type Token from 'markdown-it/lib/token.mjs';
 
+import { requestAddon } from '../../lib/addons.ts';
 import {
   KATEX_OPTIONS,
   MATH_DISPLAY_CLASS,
@@ -86,6 +87,9 @@ function refuseMathAcrossCodeSpans(state: StateInline, silent: boolean): boolean
  * also settles what happens when the add-on never arrives: the formula reads as
  * its own source, which is degraded but never blank.
  */
+/** The same selector `entrypoints/katex-addon.ts` looks for, from one constant. */
+const PLACEHOLDER_SELECTOR = `.${MATH_PLACEHOLDER_CLASS}`;
+
 function mathPlaceholder(tex: string, display: boolean): string {
   const kind = display ? MATH_DISPLAY_CLASS : MATH_INLINE_CLASS;
   return `<span class="${MATH_PLACEHOLDER_CLASS} ${kind}">${escapeHtml(tex)}</span>`;
@@ -123,6 +127,8 @@ export const markdownMathPlugin: Plugin = {
   apiVersion: PLUGIN_API_VERSION,
   enabledByDefault: true,
 
+  addon: 'katex',
+
   markdownIt(md: MarkdownIt) {
     md.use(katexPlugin, KATEX_OPTIONS);
 
@@ -133,5 +139,25 @@ export const markdownMathPlugin: Plugin = {
     // `after:` cannot express safely.
     deferMathRendering(md);
     md.inline.ruler.before('math_inline', 'mdv_code_span_wins', refuseMathAcrossCodeSpans);
+  },
+
+  /**
+   * The other half of "rendering is deferred": something has to notice the
+   * placeholders and ask for the library that fills them.
+   *
+   * In an enhancement pass rather than at setup, because the answer changes
+   * with the document — the reader can open a second file through the Files tab
+   * and that one may be the first with an equation in it. `requestAddon` is
+   * idempotent, so a document full of formulae still asks exactly once.
+   *
+   * No teardown. The add-on installs itself into the page and outlives this
+   * plugin; disabling math afterwards stops new placeholders being *emitted*,
+   * which is what leaves nothing for it to render. Injected code cannot be
+   * uninjected, and pretending otherwise in a teardown would be a lie.
+   */
+  setup(ctx) {
+    return ctx.document.enhance((body) => {
+      if (body.querySelector(PLACEHOLDER_SELECTOR)) void requestAddon('katex');
+    });
   },
 };

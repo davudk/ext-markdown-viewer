@@ -60,7 +60,8 @@ Link types, for the external-link marker and broken-link detection:
 - [An in-page anchor that does NOT resolve](#no-such-heading-anywhere) — broken
 - [A relative file link](./kitchen-sink.md) — needs a folder open to check
 - [An email link](mailto:someone@example.test) — never marked
-- [A wiki link][[Kitchen Sink]] — resolved against the open folder
+- [[Kitchen Sink]] — a wikilink, which must resolve to `kitchen-sink.md`
+- [[Guide.md]] — an extension already present, so the name is used as written
 
 ## Emphasis and inline
 

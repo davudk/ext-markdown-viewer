@@ -56,6 +56,44 @@ test('strips scripts, handlers, and javascript: urls', () => {
   assert.ok(!/javascript:/i.test(html));
 });
 
+test('inline image data URIs render, including SVG', () => {
+  const svg =
+    'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=';
+  const { html } = renderMarkdown(
+    [
+      `![raster](data:image/png;base64,iVBORw0KGgo=)`,
+      `![vector](${svg})`,
+      `![escaped](data:image/svg%2Bxml,%3Csvg/%3E)`,
+    ].join('\n\n'),
+  );
+
+  assert.ok(html.includes('src="data:image/png;base64,'), 'png was refused');
+  // markdown-it's own allowlist covers the raster formats and stops at SVG,
+  // which is the one an author is most likely to write out by hand.
+  assert.ok(html.includes('src="data:image/svg+xml;base64,'), html);
+  // Only the literal spelling is widened; a percent-encoded `+` is a different
+  // string to the regex and falls back to markdown-it's refusal.
+  assert.ok(
+    !/<img[^>]+src="data:image\/svg%2Bxml/i.test(html),
+    'an unnormalized spelling slipped through',
+  );
+});
+
+test('an svg data URI cannot become a destination', () => {
+  // The widening above is scoped to what markdown-it will emit; DOMPurify is
+  // the second lock, and confines `data:` to media tags. An `<a href>` to an
+  // SVG document is the case that would actually be dangerous.
+  const svg = 'data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22/%3E';
+  const { html } = renderMarkdown(
+    [`[click](${svg})`, `<a href="${svg}">raw</a>`, `<iframe src="${svg}"></iframe>`].join(
+      '\n\n',
+    ),
+  );
+
+  assert.ok(!/<a[^>]+href="data:/i.test(html), 'a data: link survived');
+  assert.ok(!/<iframe/i.test(html));
+});
+
 test('keeps the GFM output a stricter allowlist would eat', () => {
   const { html } = renderMarkdown(
     ['- [x] done', '- [ ] todo', '', '| a | b |', '| :-- | --: |', '| 1 | 2 |'].join('\n'),
@@ -372,21 +410,28 @@ test('two tables in a row stay two tables', () => {
 });
 
 test('resolves wikilinks to relative markdown siblings', () => {
+  // The title is prose; the file it names is a slug. `Release Notes.md` is not
+  // a file any repository this viewer opens actually contains.
   const { html } = renderMarkdown('See [[Release Notes]].');
-  assert.ok(html.includes('href="Release%20Notes.md"'), html);
+  assert.ok(html.includes('href="release-notes.md"'), html);
+  assert.ok(!html.includes('%20'), 'a space survived into the href');
   assert.ok(html.includes('class="mdv-wikilink"'));
+  // The label is what the author wrote, not what the href became.
   assert.ok(html.includes('>Release Notes</a>'));
 });
 
 test('wikilinks take a label, a heading, and an extension already present', () => {
+  // Only the last segment is a title. The directories are a path.
   const labelled = renderMarkdown('[[docs/Guide|the guide]]');
-  assert.ok(labelled.html.includes('href="docs/Guide.md"'));
+  assert.ok(labelled.html.includes('href="docs/guide.md"'), labelled.html);
   assert.ok(labelled.html.includes('>the guide</a>'));
 
   // The fragment has to be the slug this file mints, not the heading's text.
   const fragment = renderMarkdown('[[Page#Some Heading]]');
-  assert.ok(fragment.html.includes('href="Page.md#some-heading"'));
+  assert.ok(fragment.html.includes('href="page.md#some-heading"'), fragment.html);
 
+  // A target that already carries an extension is a path the author wrote out,
+  // so it is left exactly as typed — capitals included.
   const explicit = renderMarkdown('[[Guide.md]]');
   assert.ok(explicit.html.includes('href="Guide.md"'));
   assert.ok(!explicit.html.includes('Guide.md.md'));

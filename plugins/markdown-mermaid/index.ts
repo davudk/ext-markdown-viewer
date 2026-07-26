@@ -29,9 +29,20 @@
 
 import type MarkdownIt from 'markdown-it';
 
+import { requestAddon } from '../../lib/addons.ts';
 import { HIGHLIGHT_LANG_PREFIX, MERMAID_LANGUAGE } from '../../lib/config.ts';
 import { escapeHtml } from '../../lib/escape.ts';
 import { PLUGIN_API_VERSION, type Plugin } from '../../lib/plugins/types.ts';
+
+/**
+ * The same selector `entrypoints/mermaid-addon.ts` looks for.
+ *
+ * Built from the language rather than from `HIGHLIGHT_LANG_PREFIX`, which is
+ * two class names (`hljs language-`) and only usable as a class *attribute*.
+ * Interpolating it into a selector produces a descendant combinator that
+ * silently matches nothing.
+ */
+const BLOCK_SELECTOR = `pre > code.language-${MERMAID_LANGUAGE}`;
 
 export const markdownMermaidPlugin: Plugin = {
   id: 'markdown-mermaid-fence',
@@ -39,6 +50,7 @@ export const markdownMermaidPlugin: Plugin = {
   description: 'Passes ```mermaid blocks through unhighlighted, for the diagram add-on.',
   apiVersion: PLUGIN_API_VERSION,
   enabledByDefault: true,
+  addon: 'mermaid',
 
   markdownIt(md: MarkdownIt) {
     const inner = md.options.highlight;
@@ -57,6 +69,25 @@ export const markdownMermaidPlugin: Plugin = {
         // "escape it yourself", which is the correct fallback anyway.
         return inner?.(code, info, attrs) ?? '';
       },
+    });
+  },
+
+  /**
+   * Asks for the diagram renderer, and only for a document that has one.
+   *
+   * Mermaid is larger than the rest of the extension combined, which is the
+   * whole reason it is an add-on — so the request is keyed off a block actually
+   * being in the body, in a pass that re-runs when the document changes. A
+   * README with no diagrams never sends this message and never loads a byte.
+   *
+   * No teardown, for the reason the math plugin gives: the add-on installs
+   * itself into the page and cannot be uninjected. Disabling this plugin stops
+   * mermaid fences being *exempted from highlighting*, so they come back as
+   * ordinary code blocks and the add-on's selector no longer matches them.
+   */
+  setup(ctx) {
+    return ctx.document.enhance((body) => {
+      if (body.querySelector(BLOCK_SELECTOR)) void requestAddon('mermaid');
     });
   },
 };

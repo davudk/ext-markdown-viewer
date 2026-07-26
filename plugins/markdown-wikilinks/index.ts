@@ -103,11 +103,38 @@ function wikilinkHref(target: string): string {
   // A target that already names a scheme or a host is an address, not a page:
   // appending `.md` to it would only invent a file nobody has. `validateLink`
   // in the caller is what decides whether the scheme is one we will follow.
+  // A target that already carries a markdown extension is a path the author
+  // wrote out, so it is used exactly as written.
   const named =
     ABSOLUTE.test(path) ||
     MARKDOWN_EXTENSIONS.some((extension) => path.toLowerCase().endsWith(extension));
 
-  return `${path}${named ? '' : WIKILINK_SUFFIX}${fragment}`;
+  return `${named ? path : `${slugifyFilename(path)}${WIKILINK_SUFFIX}`}${fragment}`;
+}
+
+/**
+ * `[[Kitchen Sink]]` → `kitchen-sink.md`.
+ *
+ * The title the author writes and the file it lives in are spelled differently
+ * in every repository that uses this syntax: prose has spaces and capitals,
+ * filenames have neither. Slugging the last segment is what makes the link
+ * resolve, and it uses `slugify` — the same function that mints heading ids —
+ * so `[[Kitchen Sink#Install & Setup]]` gets a consistent answer on both sides
+ * of the `#`.
+ *
+ * Directories are preserved as written, because a folder name is a path the
+ * author typed rather than a title being converted into one.
+ *
+ * **The tradeoff, stated plainly.** An Obsidian vault whose files are named for
+ * their titles — a literal `Kitchen Sink.md` — is no longer reached by this.
+ * That form and the kebab-case form cannot both be produced from one string,
+ * and kebab-case is what the repositories this viewer opens actually contain.
+ */
+function slugifyFilename(path: string): string {
+  const segments = path.split('/');
+  const last = segments.pop() ?? '';
+  // An empty last segment means a trailing slash — a directory, not a page.
+  return [...segments, last ? slugify(last) : last].join('/');
 }
 
 /** `[[Page#Heading]]` shows the page, not the anchor. */

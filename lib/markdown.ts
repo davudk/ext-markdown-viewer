@@ -234,11 +234,41 @@ function alignAsAttribute(tokens: Token[]): void {
 /* The parser                                                                  */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Widens markdown-it's `data:` allowlist by exactly one type: `image/svg+xml`.
+ *
+ * markdown-it permits `data:image/gif`, `png`, `jpeg` and `webp` and refuses
+ * everything else, so `![diagram](data:image/svg+xml;base64,…)` came through as
+ * literal text — the one raster-free image format, and the one an author is
+ * most likely to inline by hand.
+ *
+ * **Why this is safe here and not in general.** An SVG data URI is dangerous as
+ * a *destination* — `<a href>`, an iframe, an object — because the document it
+ * names can carry script. It is inert as an `<img src>`: Chrome renders such an
+ * image in a null-scripted context where neither `<script>` nor an event
+ * handler runs. This relaxation cannot reach a destination, because DOMPurify
+ * runs afterwards and confines `data:` URIs to its own media-tag set, which
+ * `a`, `iframe` and `object` are not in. Both layers have to agree before an
+ * SVG data URI reaches the page, and neither of them lets it be navigated to.
+ *
+ * Delegates to the default for every other URL, so the `javascript:` and
+ * `vbscript:` refusals — the reason `validateLink` exists — are untouched.
+ */
+function allowInlineSvgImages(md: MarkdownIt): void {
+  const SVG_DATA_URI = /^data:image\/svg\+xml[,;]/i;
+  const original = md.validateLink.bind(md);
+
+  md.validateLink = (url: string) =>
+    SVG_DATA_URI.test(url.replace(/[\u0000-\u0020]/g, '')) || original(url);
+}
+
 function createParser(): MarkdownIt {
   const md = new MarkdownIt({
     ...MARKDOWN_IT_OPTIONS,
     highlight: renderFence,
   });
+
+  allowInlineSvgImages(md);
 
   // Before this file's own core rules, so the ordering the pipeline had before
   // the migration is preserved exactly: plugin rules first, baseline last. The
