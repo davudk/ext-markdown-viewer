@@ -1,0 +1,148 @@
+/* Markdown Viewer — the frontmatter card.
+
+   Chrome, not document: every colour is a --mdv-* token from viewer.css, the
+   type is the UI stack at a fixed size, and nothing here reads the reader's
+   document typography. It sits in flow above the body (`document.before`), so
+   it needs no positioning and no z-index at all.
+
+   Selectors are a class heavier than they need to be, for the same reason as
+   the other plugin stylesheets: this file and viewer.css reach the page by
+   different routes, so nothing here may depend on winning a tie. */
+
+.mdv-frontmatter {
+  margin: 0 0 1.5rem;
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius, 8px);
+  background: var(--mdv-surface);
+  font-family: var(--mdv-font-sans);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--mdv-fg);
+  overflow: hidden;
+}
+
+/* --- the disclosure ------------------------------------------------------ */
+
+.mdv-frontmatter > .mdv-frontmatter-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  /* The row is the control; a focus ring on the marker alone is invisible. */
+  outline-offset: -2px;
+  user-select: none;
+}
+
+.mdv-frontmatter > .mdv-frontmatter-summary:hover {
+  background: var(--mdv-surface-alt, transparent);
+}
+
+.mdv-frontmatter .mdv-frontmatter-label {
+  font-weight: 600;
+  /* A title from an untrusted document can be arbitrarily long; it truncates
+     rather than pushing the marker off the row. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdv-frontmatter > .mdv-frontmatter-body {
+  padding: 0 0.75rem 0.75rem;
+  border-top: 1px solid var(--mdv-border);
+  padding-top: 0.75rem;
+}
+
+/* --- byline -------------------------------------------------------------- */
+
+.mdv-frontmatter .mdv-frontmatter-byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0 0 0.5rem;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-frontmatter .mdv-frontmatter-dot {
+  color: var(--mdv-border-strong, var(--mdv-fg-muted));
+}
+
+/* --- tags ---------------------------------------------------------------- */
+
+.mdv-frontmatter .mdv-frontmatter-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0 0 0.625rem;
+  padding: 0;
+  list-style: none;
+}
+
+.mdv-frontmatter .mdv-frontmatter-tag {
+  padding: 0.0625rem 0.5rem;
+  border: 1px solid var(--mdv-border);
+  border-radius: 999px;
+  background: var(--mdv-bg);
+  color: var(--mdv-fg-muted);
+  font-size: 0.8125rem;
+  /* Chips wrap onto their own lines rather than growing the row. */
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* --- the rest, as key/value ---------------------------------------------- */
+
+.mdv-frontmatter .mdv-frontmatter-fields {
+  display: grid;
+  /* The key column sizes to its content but never takes the row: a document
+     with one long key must not squeeze every value into a column of two
+     characters. */
+  grid-template-columns: minmax(auto, 12rem) 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+}
+
+.mdv-frontmatter .mdv-frontmatter-field {
+  display: contents;
+}
+
+.mdv-frontmatter .mdv-frontmatter-fields dt {
+  color: var(--mdv-fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.mdv-frontmatter .mdv-frontmatter-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- the raw block ------------------------------------------------------- */
+
+.mdv-frontmatter .mdv-frontmatter-note {
+  margin: 0 0 0.5rem;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-frontmatter .mdv-frontmatter-raw {
+  margin: 0;
+  padding: 0.5rem 0.625rem;
+  border-radius: var(--mdv-radius-sm, 4px);
+  background: var(--mdv-bg);
+  color: var(--mdv-fg);
+  font-family: var(--mdv-font-mono);
+  font-size: 0.8125rem;
+  /* Malformed YAML is often long lines; it scrolls in its own box rather than
+     widening the document. */
+  overflow-x: auto;
+  white-space: pre;
+  tab-size: 2;
+}
+
+@media print {
+  /* Chrome does not print — the same rule viewer.css applies by attribute,
+     restated here so this stylesheet is complete on its own. */
+  .mdv-frontmatter {
+    display: none;
+  }
+}

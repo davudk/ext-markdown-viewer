@@ -46,6 +46,10 @@ const CASES: ReadonlyArray<{ what: string; source: string }> = [
     source: '> [!NOTE] Heads up\n> Body.\n\n:::danger Do not\nBoom.\n:::\n',
   },
   {
+    what: 'mdv_frontmatter before normalize',
+    source: '---\ntitle: Release Notes\ntags: [a, b]\n---\n\n# Body\n\nText.\n',
+  },
+  {
     what: 'mermaid fences, footnotes and task lists together',
     source: '- [x] done[^1]\n\n```mermaid\ngraph TD;\n  A-->B;\n```\n\n[^1]: note :tada:',
   },

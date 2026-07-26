@@ -29,6 +29,7 @@
     "dompurify": "3.4.12",
     "fuse.js": "7.5.0",
     "highlight.js": "11.11.1",
+    "js-yaml": "4.3.0",
     "katex": "0.16.47",
     "markdown-it": "14.3.0",
     "markdown-it-anchor": "9.2.1",
@@ -44,6 +45,7 @@
   },
   "devDependencies": {
     "@types/chrome": "0.1.28",
+    "@types/js-yaml": "4.0.9",
     "@types/jsdom": "27.0.0",
     "@types/markdown-it": "14.1.2",
     "@types/react": "19.2.14",

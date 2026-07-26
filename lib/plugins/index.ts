@@ -10,6 +10,7 @@
  * commit with `npm run verify` green either side.
  */
 
+import { brokenLinksPlugin } from '@/plugins/broken-links';
 import { codeCopyPlugin } from '@/plugins/code-copy';
 import { commandPalettePlugin } from '@/plugins/command-palette';
 import { diffPlugin } from '@/plugins/diff';
@@ -17,7 +18,9 @@ import { exportPlugin } from '@/plugins/export';
 import { externalLinksPlugin } from '@/plugins/external-links';
 import { filesPlugin } from '@/plugins/files';
 import { headingAnchorsPlugin } from '@/plugins/heading-anchors';
+import { frontmatterPlugin } from '@/plugins/frontmatter';
 import { headingFoldPlugin } from '@/plugins/heading-fold';
+import { hoverPreviewsPlugin } from '@/plugins/hover-previews';
 import { lightboxPlugin } from '@/plugins/lightbox';
 import { liveReloadPlugin } from '@/plugins/live-reload';
 import { markdownContainersPlugin } from '@/plugins/markdown-containers';
@@ -34,6 +37,7 @@ import { presentationPlugin } from '@/plugins/presentation';
 import { quickFindPlugin } from '@/plugins/quick-find';
 import { readingStatusPlugin } from '@/plugins/reading-status';
 import { scrollMemoryPlugin } from '@/plugins/scroll-memory';
+import { sortableTablesPlugin } from '@/plugins/sortable-tables';
 import { searchPanelPlugin } from '@/plugins/search-panel';
 import { sidebarPlugin } from '@/plugins/sidebar';
 import { themePlugin } from '@/plugins/theme';
@@ -58,6 +62,7 @@ export const PLUGINS: readonly AnyPlugin[] = [
   // each rule is positioned against a markdown-it rule name rather than against
   // another plugin, and `test/markdown-order.test.ts` renders the whole set
   // reversed and shuffled to prove the output is byte-identical.
+  frontmatterPlugin,
   markdownFootnotesPlugin,
   markdownEmojiPlugin,
   markdownTablesPlugin,
@@ -74,6 +79,11 @@ export const PLUGINS: readonly AnyPlugin[] = [
   headingAnchorsPlugin,
   headingFoldPlugin,
   readingStatusPlugin,
+  sortableTablesPlugin,
+  brokenLinksPlugin,
+  // After `files`: it reads the folder through that capability when one is
+  // open, and finds it simply absent when none is.
+  hoverPreviewsPlugin,
 
   // The sidebar publishes `sidebar.tab`; the three below fill it. A tab
   // contributed while the sidebar is disabled is inert, not an error.

@@ -1,0 +1,247 @@
+/* Markdown Viewer — broken links.
+
+   Three things: the marker on a link inside the document, the count parked in a
+   corner, and the list that opens from it.
+
+   The list is rendered by the host's overlay layer, which portals onto <body>
+   and so lands *outside* `#mdv-root`. Several rules in entrypoints/viewer.css
+   are scoped to that root — box-sizing, the focus ring, the reduced-motion
+   clamp, the print strip — and none of them reach a portal. Each is restated
+   below, as lightbox.css and presentation.css already do for the same reason.
+
+   Every colour is a `--mdv-*` token, so both themes are covered without a
+   single media query. */
+
+/* ==========================================================================
+   1. The marker
+
+   Deliberately small. A mark here is an assertion about someone else's
+   document, and the design brief is that a false positive costs more than a
+   miss — so the marker has to be legible on inspection and invisible at a
+   glance, never a red slab through a paragraph.
+
+   A dotted underline plus a superscript glyph, and nothing else: no colour on
+   the text itself, no background, no strike-through. The link keeps reading as
+   a link, because it still is one — it just does not arrive anywhere.
+
+   Attribute selector rather than a class: `ALLOW_DATA_ATTR: false` in the
+   sanitizer means an untrusted document cannot mint one of these, so the mark
+   can only have come from the pass. Written a class heavier than it needs to be
+   because this file and viewer.css reach the page by different routes and their
+   order is not guaranteed — nothing here may depend on winning a tie.
+   ========================================================================== */
+
+.mdv-body a[data-mdv-broken] {
+  /* `text-decoration` rather than a border: it follows the text across a line
+     wrap, which a border-bottom on an inline element does not. */
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  /* `--mdv-tk-deletion` rather than an invented danger token: it is the one
+     token guaranteed to be red in every theme preset, because that is what it
+     is for — the same choice viewer.css makes for the CAUTION alert. */
+  text-decoration-color: color-mix(in srgb, var(--mdv-tk-deletion) 70%, transparent);
+  /* The pass writes `title`, so the pointer should say a tooltip is coming. */
+  cursor: help;
+}
+
+.mdv-body a[data-mdv-broken]::after {
+  /* The `/ ""` is an empty alternative text: supporting browsers announce
+     nothing for this pseudo-element, so a screen reader gets the `title` the
+     pass wrote and not a decorative glyph read out mid-sentence. */
+  content: '\26A0' / '';
+  display: inline-block;
+  margin-inline-start: 0.15em;
+  font-size: 0.72em;
+  line-height: 1;
+  vertical-align: 0.35em;
+  font-family: var(--mdv-font-sans);
+  text-decoration: none;
+  color: color-mix(in srgb, var(--mdv-tk-deletion) 80%, var(--mdv-fg-muted));
+  opacity: 0.75;
+}
+
+.mdv-body a[data-mdv-broken]:hover::after,
+.mdv-body a[data-mdv-broken]:focus-visible::after {
+  opacity: 1;
+}
+
+/* ==========================================================================
+   2. The count
+
+   Contributed to `chrome.bottom-start`, which names the corner but does not lay
+   it out — a region is a mount point, so a floating control still positions
+   itself. The left corner: the reading chip and the presentation launcher are
+   both on the right, and this must not stack on either.
+   ========================================================================== */
+
+.mdv-broken-count {
+  --mdv-broken-count-inset: 0.6rem;
+
+  font: inherit;
+  font-family: var(--mdv-font-sans);
+  font-size: 0.78rem;
+  font-weight: 550;
+  line-height: 1;
+  position: fixed;
+  left: var(--mdv-broken-count-inset);
+  bottom: var(--mdv-broken-count-inset);
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0;
+  padding: 0.45em 0.65em;
+  color: var(--mdv-fg-muted);
+  background-color: var(--mdv-surface);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-sm);
+  cursor: pointer;
+  opacity: 0.6;
+  box-sizing: border-box;
+  transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease,
+    border-color var(--mdv-dur) ease;
+}
+
+.mdv-broken-count:hover,
+.mdv-broken-count:focus-visible {
+  opacity: 1;
+  color: var(--mdv-fg);
+  border-color: var(--mdv-border-strong);
+}
+
+/* The sidebar owns the left edge below its breakpoint, and on a narrow screen
+   the corner is where the document's own scrollbar is reachable. The count
+   yields, exactly as the reading chip does. */
+@media (max-width: 640px) {
+  .mdv-broken-count {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   3. The list
+
+   Inside the host's overlay, so it owns no stacking, no backdrop and no focus
+   trap — only its own box.
+   ========================================================================== */
+
+.mdv-broken-panel {
+  box-sizing: border-box;
+  width: min(34rem, 92vw);
+  max-height: min(70vh, 40rem);
+  overflow-y: auto;
+  padding: 1rem 1.1rem 1.2rem;
+  font-family: var(--mdv-font-sans);
+  color: var(--mdv-fg);
+  background-color: var(--mdv-bg);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius);
+}
+
+.mdv-broken-panel *,
+.mdv-broken-panel *::before,
+.mdv-broken-panel *::after {
+  box-sizing: border-box;
+}
+
+.mdv-broken-title {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.mdv-broken-note {
+  margin: 0 0 0.9rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--mdv-fg-muted);
+}
+
+.mdv-broken-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.mdv-broken-row {
+  font: inherit;
+  font-family: var(--mdv-font-sans);
+  display: grid;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  text-align: start;
+  color: inherit;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--mdv-radius-sm);
+  cursor: pointer;
+}
+
+.mdv-broken-row:hover,
+.mdv-broken-row:focus-visible {
+  background-color: var(--mdv-surface);
+  border-color: var(--mdv-border);
+}
+
+/* Restated because the portal is outside `#mdv-root`, where viewer.css sets it. */
+.mdv-broken-row:focus-visible {
+  outline: 2px solid var(--mdv-accent);
+  outline-offset: 1px;
+}
+
+.mdv-broken-row-text {
+  font-size: 0.86rem;
+  font-weight: 550;
+  /* A link's text can be a whole sentence; the row is an index, not the
+     document. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mdv-broken-row-href {
+  font-family: var(--mdv-font-mono);
+  font-size: 0.74rem;
+  color: var(--mdv-fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.mdv-broken-row-reason {
+  font-size: 0.74rem;
+  color: var(--mdv-fg-muted);
+}
+
+/* ==========================================================================
+   4. Motion and print
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .mdv-broken-count {
+    transition: none;
+  }
+}
+
+/* The marker is screen-only chrome that happens to live inside the document, so
+   it cannot carry `data-mdv-chrome` and cannot be caught by viewer.css's strip.
+   Said here instead: on paper the link is printed exactly as the author wrote
+   it, with no underline and no glyph. */
+@media print {
+  .mdv-body a[data-mdv-broken] {
+    text-decoration: none;
+    cursor: auto;
+  }
+
+  .mdv-body a[data-mdv-broken]::after {
+    content: none;
+  }
+
+  .mdv-broken-count {
+    display: none;
+  }
+}

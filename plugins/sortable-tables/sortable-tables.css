@@ -1,0 +1,112 @@
+/* Markdown Viewer — sortable tables.
+
+   The whole feature is one control and three glyphs. Colours are --mdv-*
+   tokens from viewer.css, so both themes are covered by the `data-mdv-theme`
+   attribute on <html> without a single media query. Selectors are a class
+   heavier than they need to be, because this file and viewer.css reach the page
+   by different routes and their order is not guaranteed. */
+
+/* ==========================================================================
+   1. The header
+
+   `:has()` rather than a marker attribute on the <th>. The pointer affordance
+   follows from the control being there, and a table that was refused — one with
+   a colspan — matches nothing here, so it looks exactly like a table in a
+   document where this plugin is switched off.
+   ========================================================================== */
+
+.mdv-body th:has(> .mdv-sort) {
+  cursor: pointer;
+  user-select: none;
+  /* Reserved whether or not the column is sorted, so cycling a column never
+     rewraps the header text under the reader's pointer. */
+  padding-right: 1.9em;
+  position: relative;
+}
+
+.mdv-body th:has(> .mdv-sort):hover {
+  color: var(--mdv-accent);
+}
+
+/* ==========================================================================
+   2. The control
+   ========================================================================== */
+
+.mdv-body .mdv-sort {
+  position: absolute;
+  right: 0.45em;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25em;
+  height: 1.25em;
+  padding: 0;
+  border: 0;
+  border-radius: var(--mdv-radius-sm);
+  background: none;
+  color: var(--mdv-fg-muted);
+  cursor: pointer;
+  /* Faint until the column is sorted or the header is approached: a table of
+     eight columns should not read as eight buttons. */
+  opacity: 0.4;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+.mdv-body th:hover > .mdv-sort,
+.mdv-body .mdv-sort:focus-visible,
+.mdv-body .mdv-sort:not([data-mdv-sort='none']) {
+  opacity: 1;
+  color: var(--mdv-accent);
+}
+
+.mdv-body .mdv-sort:focus-visible {
+  outline: 2px solid var(--mdv-accent);
+  outline-offset: 1px;
+}
+
+/* ==========================================================================
+   3. The indicator
+
+   Three glyphs, one shown. Swapping which face is displayed keeps the state in
+   the attribute the script already writes, so nothing here has to be kept in
+   step with the cycle in plugin.ts.
+   ========================================================================== */
+
+.mdv-body .mdv-sort-face {
+  display: none;
+  line-height: 0;
+}
+
+.mdv-body .mdv-sort[data-mdv-sort='none'] > .mdv-sort-face-none,
+.mdv-body .mdv-sort[data-mdv-sort='ascending'] > .mdv-sort-face-asc,
+.mdv-body .mdv-sort[data-mdv-sort='descending'] > .mdv-sort-face-desc {
+  display: inline-block;
+}
+
+.mdv-body .mdv-sort-icon {
+  display: block;
+}
+
+.mdv-body .mdv-sort .mdv-sort-up {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* ==========================================================================
+   4. Print
+
+   A sort is a reading state, and paper has no control to offer. The rows print
+   in whatever order the reader left them, which is what they are looking at.
+   ========================================================================== */
+
+@media print {
+  .mdv-body .mdv-sort {
+    display: none;
+  }
+
+  .mdv-body th:has(> .mdv-sort) {
+    padding-right: 0.85em;
+  }
+}

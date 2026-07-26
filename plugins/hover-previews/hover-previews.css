@@ -1,0 +1,141 @@
+/* Markdown Viewer — link previews.
+
+   Every colour is a --mdv-* token from viewer.css, so the panel follows the
+   `data-mdv-theme` attribute on <html> with no palette of its own and no
+   prefers-color-scheme query.
+
+   Two positioning stories share one box. Where CSS anchor positioning exists
+   the panel is a popover in the top layer and the browser flips it near an
+   edge; where it does not, `plugin.ts` writes `position: fixed` and
+   coordinates it computed itself, and `[data-mdv-fallback]` is what tells the
+   two apart. Everything visual below is common to both.
+
+   Selectors are a class heavier than they need to be, for the same reason as
+   document.css — this file and viewer.css reach the page by different routes,
+   so nothing here may depend on winning a tie. */
+
+/* ==========================================================================
+   1. The panel
+   ========================================================================== */
+
+.mdv-preview[data-mdv-chrome] {
+  /* The cap the spec asks for, and the cap `decidePlacement` assumes. A
+     preview that grows to the height of the section it previews is not a
+     preview — it is the document, in a box, over the document. */
+  max-width: 400px;
+  max-height: 300px;
+  width: max-content;
+  overflow: hidden;
+
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius, 8px);
+  background: var(--mdv-surface);
+  color: var(--mdv-fg);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 22%);
+
+  /* Chrome, so the UI stack at a fixed size rather than the reader's document
+     typography: a 22px serif preview is a worse glance than a small one. */
+  font-family: var(--mdv-font-sans);
+  font-size: 0.82rem;
+  line-height: 1.45;
+
+  /* It is a tooltip. It must never be in the way of the link it describes, and
+     it must never be the thing the pointer lands on. */
+  pointer-events: none;
+}
+
+/* The truncation, said in the one way that cannot be mistaken for the end of
+   the text: the last two lines fade out. `mask-image` is the whole mechanism —
+   no gradient overlay element, so nothing to mis-colour against the surface and
+   nothing extra in the DOM. */
+.mdv-preview[data-mdv-chrome] {
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 2.6em), transparent 100%);
+}
+
+/* The anchored path. The panel is in the top layer, so it needs no z-index —
+   which is the reason to prefer it. */
+.mdv-preview[data-mdv-chrome]:popover-open {
+  position: absolute;
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block, flip-inline;
+  margin: 0.4rem 0 0;
+  inset: auto;
+}
+
+/* The fallback path, positioned from JavaScript. `position: fixed` is written
+   inline; only the stacking is this file's business, and it is the one number
+   in the plugin — deliberately below the overlay stack in `overlays.css`,
+   because a preview must never cover a dialog. */
+.mdv-preview[data-mdv-chrome][data-mdv-fallback] {
+  z-index: 30;
+}
+
+/* ==========================================================================
+   2. What is inside it
+
+   The in-document case clones live blocks, so this has to cover whatever the
+   document contained. Margins are collapsed to the panel's own rhythm and the
+   first block loses its top margin, so short previews are not mostly padding.
+   ========================================================================== */
+
+.mdv-preview[data-mdv-chrome] > * {
+  margin: 0 0 0.5em;
+}
+
+.mdv-preview[data-mdv-chrome] > :last-child {
+  margin-bottom: 0;
+}
+
+.mdv-preview[data-mdv-chrome] :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0 0 0.4em;
+  font-size: 1em;
+  font-weight: 600;
+  border: 0;
+  padding: 0;
+}
+
+.mdv-preview[data-mdv-chrome] :is(pre, code) {
+  font-family: var(--mdv-font-mono);
+  font-size: 0.92em;
+}
+
+.mdv-preview[data-mdv-chrome] pre {
+  padding: 0.4em 0.5em;
+  border-radius: var(--mdv-radius-sm, 4px);
+  background: var(--mdv-surface-alt);
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+.mdv-preview[data-mdv-chrome] :is(ul, ol) {
+  padding-inline-start: 1.2em;
+}
+
+/* Images in a preview are decoration at this size and load work at any size. */
+.mdv-preview[data-mdv-chrome] :is(img, svg, video) {
+  display: none;
+}
+
+/* The other file's path, so a cross-file preview says where it came from. */
+.mdv-preview-source {
+  margin: 0 0 0.5em;
+  color: var(--mdv-fg-muted);
+  font-size: 0.78em;
+  font-family: var(--mdv-font-mono);
+  word-break: break-all;
+}
+
+/* ==========================================================================
+   3. Not on paper
+
+   A preview is a pointer state. There is no pointer on a printed page, and a
+   panel frozen over a paragraph would be a defect in the printout.
+   ========================================================================== */
+
+@media print {
+  .mdv-preview[data-mdv-chrome] {
+    display: none !important;
+  }
+}

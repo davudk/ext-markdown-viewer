@@ -24,6 +24,10 @@ import { sortPlugins } from '../lib/plugins/host.ts';
 import type { AnyPlugin, Logger, PluginContext } from '../lib/plugins/types.ts';
 
 import { markdownContainersPlugin } from '../plugins/markdown-containers/index.ts';
+// Assembled here rather than imported: the plugin's `index.tsx` names a React
+// component, and `--experimental-strip-types` refuses a `.tsx`. What this file
+// needs is the parser half, which `plugin.ts` gives it whole.
+import { createFrontmatterPlugin } from '../plugins/frontmatter/plugin.ts';
 import { markdownEmojiPlugin } from '../plugins/markdown-emoji/index.ts';
 import { markdownFootnotesPlugin } from '../plugins/markdown-footnotes/index.ts';
 import { markdownGithubAlertsPlugin } from '../plugins/markdown-github-alerts/index.ts';
@@ -33,8 +37,11 @@ import { markdownMermaidPlugin } from '../plugins/markdown-mermaid/index.ts';
 import { markdownTablesPlugin } from '../plugins/markdown-tables/index.ts';
 import { markdownWikilinksPlugin } from '../plugins/markdown-wikilinks/index.ts';
 
+export const frontmatterPlugin = createFrontmatterPlugin(() => null);
+
 /** The registry order, mirrored. Kept in one place so the tests cannot drift. */
 export const MARKDOWN_PLUGINS: readonly AnyPlugin[] = [
+  frontmatterPlugin,
   markdownFootnotesPlugin,
   markdownEmojiPlugin,
   markdownTablesPlugin,
