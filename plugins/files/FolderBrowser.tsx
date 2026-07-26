@@ -12,7 +12,6 @@ import {
 
 import {
   createMatcher,
-  publishFolder,
   type FuzzyField,
   type PaletteFile,
 } from '../../lib/commands.ts';
@@ -37,7 +36,7 @@ import {
   type FolderEntry,
 } from '../../lib/folder.ts';
 
-import { FilterBox, useFuzzy } from '../../components/CommandPalette.tsx';
+import { FilterBox, useFuzzy } from '../../components/FilterBox.tsx';
 // The surface this tab contributes to: the panel wrapper, the "are you showing"
 // answer, and the two hooks the host does not provide.
 import {
@@ -48,7 +47,12 @@ import {
 } from '../sidebar/context.tsx';
 
 import { FILES_TAB } from './plugin.ts';
-import type { FolderStatus, OpenedDocument } from './types.ts';
+import {
+  NO_FOLDER,
+  type FolderBrowserStore,
+  type FolderStatus,
+  type OpenedDocument,
+} from './types.ts';
 
 import './folder-browser.css';
 
@@ -80,6 +84,7 @@ export function FilesTab() {
   const open = useCapability('document.open');
   const compare = useCapability('document.compare');
   const published = useCapability('files.status');
+  const browser = useCapability('files.browser');
 
   const onStatusChange = useCallback(
     (status: FolderStatus) => {
@@ -106,6 +111,7 @@ export function FilesTab() {
         onOpen={open ?? noop}
         onCompare={compare}
         onStatusChange={onStatusChange}
+        published={browser}
       />
     </SidebarPanel>
   );
@@ -161,6 +167,7 @@ export function FolderBrowser({
   onOpen,
   onCompare,
   onStatusChange,
+  published,
 }: {
   /** The document on screen — `location.href` or an `mdv-folder:` identity. */
   documentUrl: string;
@@ -182,6 +189,12 @@ export function FolderBrowser({
    */
   onCompare?: (request: CompareRequest) => void;
   onStatusChange: (status: FolderStatus) => void;
+  /**
+   * Where what this component knows is published for plugins outside the tree.
+   * Absent while the files plugin has not finished setting up, which is a state
+   * every reader of the capability already has to handle.
+   */
+  published?: FolderBrowserStore;
 }) {
   const supported = useMemo(isFolderBrowserSupported, []);
 
@@ -453,22 +466,35 @@ export function FolderBrowser({
     [knownFiles, root],
   );
 
-  // The palette is a sibling of the sidebar, not a descendant of it, so what
-  // this component knows reaches it through the registry in lib/commands.ts
-  // rather than through two components whose only job would be forwarding it.
+  /** The text of a known file, for a caller that is not going to open it. */
+  const readPath = useCallback(
+    async (path: string) => {
+      const file = knownFiles.find((candidate) => candidate.path === path);
+      if (!file) throw new Error(`${path} is no longer in the open folder`);
+      return readFileText(file.entry.handle as FileSystemFileHandle);
+    },
+    [knownFiles],
+  );
+
+  // The palette and the diff are siblings of the sidebar, not descendants of
+  // it, so what this component knows reaches them as a capability. It used to
+  // be a module-scope `let` in lib/commands.ts — one publisher, one subscriber,
+  // and a live handle on a mounted component held at module scope, which is the
+  // exact shape capabilities replaced.
   useEffect(() => {
-    publishFolder({
+    published?.set({
       supported,
       rootName: root?.name ?? null,
       files: paletteFiles,
       choose: () => void choose(),
       open: openPath,
+      read: readPath,
     });
-  }, [supported, root, paletteFiles, choose, openPath]);
+  }, [published, supported, root, paletteFiles, choose, openPath, readPath]);
 
-  // Separately, and only on unmount: the registration is a live handle on a
-  // mounted component, and the palette must not be left holding one that is not.
-  useEffect(() => () => publishFolder(null), []);
+  // Separately, and only on unmount: nobody may be left holding a handle on a
+  // component that is no longer there.
+  useEffect(() => () => published?.set(NO_FOLDER), [published]);
 
   /**
    * Raises the menu for whichever file row an event landed on.

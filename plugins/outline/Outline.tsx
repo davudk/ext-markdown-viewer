@@ -4,7 +4,7 @@ import { createMatcher, type FuzzyField } from '../../lib/commands.ts';
 import { FILTER_RESULT_LIMIT } from '../../lib/config.ts';
 import type { Heading } from '../../lib/markdown.ts';
 
-import { FilterBox, useFuzzy } from '../../components/CommandPalette.tsx';
+import { FilterBox, useFuzzy } from '../../components/FilterBox.tsx';
 // The surface this tab contributes to, for the panel wrapper and the "are you
 // showing" answer a region cannot pass as a prop. See plugins/sidebar/context.
 import {

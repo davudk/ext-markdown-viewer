@@ -5,35 +5,32 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 
 import {
-  buildCommands,
   buildFileItems,
   buildHeadingItems,
   buildSettingItems,
   createMatcher,
-  getFolder,
-  loadFuse,
-  subscribeFolder,
   PALETTE_FIELDS,
-  type FolderRegistration,
-  type FuseConstructor,
   type PaletteFile,
   type PaletteItem,
-} from '@/lib/commands';
+} from '../../lib/commands.ts';
 import {
-  COMMAND_PALETTE_KEY,
   FOLDER_DOCUMENT_SCHEME,
   PALETTE_RESULT_LIMIT,
   PALETTE_SOURCES,
-  type ExportFormat,
   type PaletteSource,
-} from '@/lib/config';
-import { listRecentDocuments } from '@/lib/document-state';
-import type { Heading } from '@/lib/markdown';
-import { saveSettings, type Settings } from '@/lib/settings';
+} from '../../lib/config.ts';
+import { listRecentDocuments } from '../../lib/document-state.ts';
+import { useDocument, usePlugin, usePluginHost } from '../../lib/plugins/react.tsx';
+import type { Command } from '../../lib/plugins/types.ts';
+import { DEFAULT_SETTINGS, saveSettings, type Settings } from '../../lib/settings.ts';
+
+import { paletteCommands } from './plugin.ts';
+import { useFuzzy } from '../../components/FilterBox.tsx';
 
 import './command-palette.css';
 
@@ -49,169 +46,17 @@ const RECENT_LIMIT = 15;
 /** Where a chosen heading is parked, matching the outline's own jump offset. */
 const JUMP_OFFSET_PX = 24;
 
-/* -------------------------------------------------------------------------- */
-/* Loading Fuse                                                                */
-/* -------------------------------------------------------------------------- */
+const noopSubscribe = () => () => {};
 
 /**
- * Fuse's constructor once it is available, and null until then.
+ * What the rows read from before the plugin's own settings have loaded.
  *
- * Exported because the two sidebar filter boxes need exactly the same thing and
- * `loadFuse` memoises across all three — the module is resolved once per page
- * however many surfaces ask for it. Nothing here blocks on it: every caller
- * builds a working substring matcher from the null and swaps in the fuzzy one
- * on the render after it arrives.
+ * A frame, at most: `setup` reads storage as it starts. The defaults are the
+ * right stand-in because every row that shows a value shows a real one the
+ * moment the read lands, and a palette that renders nothing until storage
+ * answers is a palette that feels slower than the key that opened it.
  */
-export function useFuzzy(): FuseConstructor | null {
-  const [fuse, setFuse] = useState<FuseConstructor | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    void loadFuse().then((loaded) => {
-      // Wrapped in an updater: a constructor *is* a function, and handing one
-      // to a setter directly would have React call it as a reducer.
-      if (alive && loaded) setFuse(() => loaded);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  return fuse;
-}
-
-/* -------------------------------------------------------------------------- */
-/* The filter box the two sidebar panels share                                 */
-/* -------------------------------------------------------------------------- */
-
-/**
- * A one-line filter over a list that is already on screen.
- *
- * Here rather than in `Toc.tsx` or `FolderBrowser.tsx` because both need it and
- * because it is the same idea as the palette at a smaller scale — the same
- * matcher, the same "typing narrows a list of discrete things", the same
- * stylesheet. Two copies of this would be two places for the announcement
- * timing and the escape-to-clear behaviour to drift apart.
- *
- * Deliberately *not* a combobox: the lists it filters are a `<nav>` of links
- * and a `role="tree"`, both of which keep their own keyboard model. This types,
- * clears, and counts; it never moves the selection.
- */
-export function FilterBox({
-  value,
-  onChange,
-  label,
-  placeholder,
-  count,
-  controls,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  /** Accessible name. Visible only as the placeholder. */
-  label: string;
-  placeholder: string;
-  /** Rows showing now, or null when nothing is filtered. */
-  count: number | null;
-  /** Id of the list being filtered. */
-  controls?: string;
-}) {
-  const [announcement, setAnnouncement] = useState('');
-
-  // Same bargain as the palette's own live region: a count announced while it
-  // is still changing turns every keystroke into an interruption.
-  useEffect(() => {
-    if (value.trim().length === 0 || count === null) {
-      setAnnouncement('');
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      setAnnouncement(count === 0 ? 'No matches' : `${count} ${count === 1 ? 'match' : 'matches'}`);
-    }, ANNOUNCE_MS);
-
-    return () => clearTimeout(timer);
-  }, [value, count]);
-
-  return (
-    <div className="mdv-filter">
-      <input
-        className="mdv-filter-field"
-        type="text"
-        value={value}
-        placeholder={placeholder}
-        aria-label={label}
-        aria-controls={controls}
-        autoComplete="off"
-        spellCheck={false}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          // Escape empties the box rather than reaching the panel behind it,
-          // which is what every filter field in every file tree does.
-          if (event.key === 'Escape' && value.length > 0) {
-            event.preventDefault();
-            event.stopPropagation();
-            onChange('');
-          }
-        }}
-      />
-
-      {count !== null ? (
-        <span className="mdv-filter-count" aria-hidden="true">
-          {count}
-        </span>
-      ) : null}
-
-      {value.length > 0 ? (
-        <button
-          type="button"
-          className="mdv-filter-clear"
-          aria-label={`Clear ${label.toLowerCase()}`}
-          title="Clear (Escape)"
-          onClick={() => onChange('')}
-        >
-          <CloseIcon />
-        </button>
-      ) : null}
-
-      <div className="mdv-filter-live" role="status" aria-live="polite">
-        {announcement}
-      </div>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/* Props                                                                       */
-/* -------------------------------------------------------------------------- */
-
-export interface CommandPaletteProps {
-  /** The outline, so every heading is reachable without opening the sidebar. */
-  headings: Heading[];
-  /** Current settings. Rows read their values from here and act through `applySettings`. */
-  settings: Settings;
-  /** The document on screen, so it is not offered as somewhere to go. */
-  documentUrl: string;
-  /** Which view the reader is in, for the raw-view row's hint. */
-  showRaw?: boolean;
-  /** Present when the shell can switch views; absent removes "Toggle raw text". */
-  onToggleRaw?: () => void;
-  /**
-   * Formats the export add-on can produce right now. Absent or empty removes
-   * both export rows — an export that cannot run is worse than no row at all.
-   */
-  exportFormats?: readonly ExportFormat[];
-  onExport?: (format: ExportFormat) => void;
-  /** Overrides the folder picker the Files tab publishes. Rarely needed. */
-  onOpenFolder?: () => void;
-  /** Absent removes "Compare files…", as does having no folder open. */
-  onCompareFiles?: () => void;
-  /** Absent removes "Open settings…". A content script cannot reach the options page alone. */
-  onOpenSettings?: () => void;
-  /** Defaults to `saveSettings`. */
-  applySettings?: (patch: Partial<Settings>) => void;
-  /** Defaults to `window.print`. */
-  print?: () => void;
-}
+const EMPTY_SETTINGS: Settings = { ...DEFAULT_SETTINGS };
 
 /* -------------------------------------------------------------------------- */
 /* Palette                                                                     */
@@ -220,8 +65,8 @@ export interface CommandPaletteProps {
 /**
  * Ctrl/Cmd+K: one field over everything the viewer can do or go to.
  *
- * A sibling of the search panel rather than a variant of it, and the difference
- * is what is being searched. Search reads the *document* — a literal string,
+ * A sibling of quick find rather than a variant of it, and the difference is
+ * what is being searched. Quick find reads the *document* — a literal string,
  * every occurrence, painted in place. This reads a list of *discrete things*:
  * commands, settings, headings, files. That is why fuzzy matching is right here
  * and would be wrong there, and why the two share no code beyond the shell's
@@ -231,65 +76,73 @@ export interface CommandPaletteProps {
  * which jumping to a heading called "Export" and running the command called
  * "Export as HTML" are indistinguishable until Enter has already been pressed.
  *
- * The palette owns none of the capabilities it offers. Exporting, the raw view
- * and comparing files arrive as props; the folder picker and the folder's file
- * list arrive from `FolderBrowser` through the registry in `lib/commands.ts`.
- * Anything that did not arrive is left out of the list entirely.
+ * The palette owns none of the abilities it offers, which is unchanged — what
+ * changed is how it finds out about them. Exporting and comparing arrive as
+ * capabilities from the plugins that implement them, the folder's file list and
+ * its picker from the Files tab the same way, and everything else in the list
+ * arrives through `ctx.commands`. Anything absent is left out entirely.
+ *
+ * What is *not* here any more: the `open` state, the window listener that
+ * toggled it, the ctrl/cmd+K handling, the Escape branch, the two-stop Tab trap,
+ * the focus capture and restore, and the `z-index: 60` scrim layer. Every one of
+ * those is the overlay host's now.
  */
-export function CommandPalette({
-  headings,
-  settings,
-  documentUrl,
-  showRaw,
-  onToggleRaw,
-  exportFormats,
-  onExport,
-  onOpenFolder,
-  onCompareFiles,
-  onOpenSettings,
-  applySettings,
-  print,
-}: CommandPaletteProps) {
-  const [open, setOpen] = useState(false);
+export function CommandPalette({ close }: { close: () => void }) {
+  const ctx = usePlugin();
+  const host = usePluginHost();
+  const doc = useDocument();
+
+  // One subscription for every capability this reads: the registry bumps a
+  // counter whenever anything is provided or withdrawn, which is exactly when a
+  // row appears or disappears.
+  useSyncExternalStore(host.capabilities.store.subscribe, () =>
+    host.capabilities.store.get(),
+  );
+  const palette = ctx.capabilities.use('command-palette');
+  const exporter = ctx.capabilities.use('export');
+  const differ = ctx.capabilities.use('diff');
+  const toggleRaw = ctx.capabilities.use('document.toggleRaw');
+  const browser = ctx.capabilities.use('files.browser');
+
+  const settings = useSyncExternalStore(
+    palette?.settings.subscribe ?? noopSubscribe,
+    () => palette?.settings.get() ?? EMPTY_SETTINGS,
+  );
+  const restart = useSyncExternalStore(
+    palette?.restarts.subscribe ?? noopSubscribe,
+    () => palette?.restarts.get() ?? 0,
+  );
+  const folder = useSyncExternalStore(
+    browser?.subscribe ?? noopSubscribe,
+    () => browser?.get(),
+  );
+
+  // Commands are read the same way a region's contributions are: from the
+  // registry, through its store, so a plugin enabled while the palette is open
+  // shows up without the palette knowing that plugin exists.
+  const commands = useSyncExternalStore(host.commands.store.subscribe, () =>
+    host.commands.store.get(),
+  );
+
+  const headings = doc.headings;
+  const documentUrl = doc.url;
+  const showRaw = doc.isRaw;
+
   const [query, setQuery] = useState('');
   const [settled, setSettled] = useState('');
   const [current, setCurrent] = useState(0);
   const [announcement, setAnnouncement] = useState('');
   const [recent, setRecent] = useState<PaletteFile[]>([]);
-  const [folder, setFolder] = useState<FolderRegistration>(getFolder);
 
   const fuse = useFuzzy();
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const restoreRef = useRef<HTMLElement | null>(null);
-  // The window listener is bound once; this is how it reads current state.
-  const openRef = useRef(open);
-  useEffect(() => {
-    openRef.current = open;
-  });
 
   const listId = useId();
   const optionId = (position: number) => `${listId}-${position}`;
 
-  /* --- what the shell was able to supply ---------------------------------- */
-
-  // `FolderBrowser` is two components below the palette's own parent, so its
-  // file list and its picker are published rather than passed. See the registry
-  // in lib/commands.ts for why that is not prop-drilling avoidance for its own
-  // sake — the components in between are not ours to edit.
-  useEffect(() => subscribeFolder(setFolder), []);
-
-  const apply = useCallback(
-    (patch: Partial<Settings>) => {
-      if (applySettings) applySettings(patch);
-      else void saveSettings(patch);
-    },
-    [applySettings],
-  );
-
-  const close = useCallback(() => setOpen(false), []);
+  const apply = useCallback((patch: Partial<Settings>) => void saveSettings(patch), []);
 
   /** Runs a row and gets out of the way. Every row closes the palette. */
   const activate = useCallback(
@@ -318,26 +171,29 @@ export function CommandPalette({
   /* --- the list ----------------------------------------------------------- */
 
   const items = useMemo(() => {
-    const folderFiles = buildFileItems(folder.files, (file) => folder.open(file.id));
+    const folderFiles = buildFileItems(folder?.files ?? [], (file) =>
+      folder?.open(file.id),
+    );
     const recentFiles = buildFileItems(recent, (file) => {
       location.assign(file.id);
     });
 
     return [
-      ...buildCommands({
+      // Every ability below is a capability, and every absent one removes its
+      // row. The mapping is in `plugin.ts` so that rule can be a test.
+      ...paletteCommands({
         settings,
         applySettings: apply,
-        toggleRaw: onToggleRaw,
         showRaw,
-        exportFormats,
-        exportAs: onExport,
-        print: print ?? (() => window.print()),
-        openFolder: onOpenFolder ?? (folder.supported ? folder.choose : undefined),
-        // Nothing to compare a document against until a folder is open, so the
-        // row is absent rather than opening a picker with one side missing.
-        compareFiles: folder.rootName !== null ? onCompareFiles : undefined,
-        openSettings: onOpenSettings,
+        toggleRaw,
+        exporter,
+        differ,
+        folder,
       }),
+      // Everyone else's commands, read exactly the way anyone would: presentation
+      // registered "Present document", quick find registered "Find in document…",
+      // and the palette contributed its own. It knows none of their names.
+      ...contributed(commands),
       ...buildSettingItems(settings, apply),
       ...buildHeadingItems(headings, goToHeading),
       ...folderFiles,
@@ -346,15 +202,12 @@ export function CommandPalette({
   }, [
     settings,
     apply,
-    onToggleRaw,
+    toggleRaw,
     showRaw,
-    exportFormats,
-    onExport,
-    print,
-    onOpenFolder,
-    onCompareFiles,
-    onOpenSettings,
+    exporter,
+    differ,
     folder,
+    commands,
     headings,
     recent,
     goToHeading,
@@ -376,63 +229,33 @@ export function CommandPalette({
 
   const total = results.length;
 
-  /* --- opening and closing ------------------------------------------------ */
+  /* --- opening ------------------------------------------------------------ */
 
-  const openPalette = useCallback(() => {
-    if (openRef.current) {
-      // Already open: the shortcut means "start again", so the standing query is
-      // selected rather than the palette closing under a reader's habit.
-      inputRef.current?.focus();
-      inputRef.current?.select();
-      return;
+  /**
+   * Start again, on every re-press of the shortcut.
+   *
+   * The host focuses the first focusable thing in an overlay — which is this
+   * field — but it does not *select* what is in it, and `OverlayOptions` has no
+   * `initialFocus` to say so. And "already open" is not a close: ctrl/cmd+K
+   * pressed a second time means "start a new search", which `openOverlay` being
+   * idempotent per id cannot express. `plugin.ts` bumps a counter for it, and
+   * this is what reads it.
+   */
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+    if (restart > 0) {
+      setQuery('');
+      setSettled('');
+      setCurrent(0);
     }
+  }, [restart]);
 
-    const active = document.activeElement;
-    restoreRef.current = active instanceof HTMLElement ? active : null;
-    setQuery('');
-    setSettled('');
-    setCurrent(0);
-    setOpen(true);
-  }, []);
-
+  // Recent documents are read when the palette opens rather than at page load:
+  // it is a storage round-trip for a list nobody has asked to see yet, and it
+  // must be current each time. The palette is only mounted while it is showing,
+  // so "when it opens" is now simply "on mount".
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing) return;
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        !event.altKey &&
-        !event.shiftKey &&
-        event.key.toLowerCase() === COMMAND_PALETTE_KEY
-      ) {
-        event.preventDefault();
-        openPalette();
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [openPalette]);
-
-  // Focus in on open, and back exactly where it came from on close. Both after
-  // the commit: restoring before the dialog unmounts would hand focus to an
-  // element the dialog is about to take it back from on its way out.
-  useEffect(() => {
-    if (open) {
-      inputRef.current?.focus();
-      return;
-    }
-
-    const restore = restoreRef.current;
-    restoreRef.current = null;
-    if (restore?.isConnected) restore.focus();
-  }, [open]);
-
-  // Recent documents are read when the palette opens rather than on mount: it
-  // is a storage round-trip for a list nobody has asked to see yet, and it must
-  // be current each time rather than as of page load.
-  useEffect(() => {
-    if (!open) return;
-
     let alive = true;
     void listRecentDocuments().then((entries) => {
       if (!alive) return;
@@ -442,7 +265,7 @@ export function CommandPalette({
     return () => {
       alive = false;
     };
-  }, [open, documentUrl]);
+  }, [documentUrl]);
 
   useEffect(() => {
     const timer = setTimeout(() => setSettled(query), DEBOUNCE_MS);
@@ -456,11 +279,6 @@ export function CommandPalette({
   // Polite and late, like the search panel's: announcing a count that is still
   // changing turns every keystroke into an interruption.
   useEffect(() => {
-    if (!open) {
-      setAnnouncement('');
-      return;
-    }
-
     const timer = setTimeout(() => {
       const trimmed = settled.trim();
       if (trimmed.length === 0) setAnnouncement('');
@@ -469,18 +287,17 @@ export function CommandPalette({
     }, ANNOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [open, settled, total]);
+  }, [settled, total]);
 
   // Keep the active row inside the palette's own scroller. `nearest` so it can
   // never scroll the page behind it.
   useEffect(() => {
-    if (!open) return;
     listRef.current
       ?.querySelector(`#${CSS.escape(optionId(current))}`)
       ?.scrollIntoView({ block: 'nearest' });
     // `optionId` is derived from `listId`, which is stable for this instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, current, results, listId]);
+  }, [current, results, listId]);
 
   /* --- keys inside the dialog --------------------------------------------- */
 
@@ -495,9 +312,11 @@ export function CommandPalette({
   const onDialogKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     // Everything the reader types while this is open belongs to this, including
     // the keys they do not press here. `useKeyboardShortcuts` already ignores
-    // events from a field, but `t`, `r`, `d` and `/` are claimed by several
-    // components with listeners of their own, and stopping propagation at the
-    // dialog is the one place that covers all of them at once.
+    // events from a field, but `t`, `r` and `d` are claimed by listeners of
+    // their own, and stopping propagation at the dialog is the one place that
+    // covers all of them at once. It does not reach the plugin host's shortcut
+    // registry, which captures — but every binding there is either modified or
+    // skipped while the reader is typing, and the field has focus.
     event.stopPropagation();
 
     // Mid-IME composition every key belongs to the input method, including the
@@ -506,10 +325,10 @@ export function CommandPalette({
     if (event.nativeEvent.isComposing) return;
 
     switch (event.key) {
-      case 'Escape':
-        event.preventDefault();
-        close();
-        return;
+      // No Escape branch: the overlay host closes the top of the stack, which is
+      // this. No Tab branch either — containment is the layer's, and the trap it
+      // does is a scan of the focusable descendants rather than the wrap between
+      // two stops this used to hard-code.
       case 'ArrowDown':
         event.preventDefault();
         step(1);
@@ -530,47 +349,22 @@ export function CommandPalette({
         event.preventDefault();
         activate(results[current]);
         return;
-      case 'Tab': {
-        // Two tab stops — the field and the close button — so the trap is a
-        // wrap between them rather than a scan for focusable descendants.
-        event.preventDefault();
-        const onField = document.activeElement === inputRef.current;
-        (onField ? closeRef.current : inputRef.current)?.focus();
-        return;
-      }
-      default:
-        // Ctrl/Cmd+K again selects the query rather than escaping through to
-        // the window handler this dialog is now shadowing.
-        if (
-          (event.ctrlKey || event.metaKey) &&
-          !event.altKey &&
-          !event.shiftKey &&
-          event.key.toLowerCase() === COMMAND_PALETTE_KEY
-        ) {
-          event.preventDefault();
-          inputRef.current?.select();
-        }
     }
   };
-
-  if (!open) return null;
 
   const groups = groupBySource(results);
 
   return (
     <div className="mdv-palette-layer" data-mdv-chrome>
-      {/* The scrim is what makes this modal in practice: a click outside is the
-          commonest way to dismiss a palette, and it must not reach the document
-          underneath. */}
+      {/* Dismissing by clicking away is still this component's, because the host
+          has no opinion about it: the overlay surface is inert to the document
+          beneath, but nothing there says a click on the empty part of a modal
+          closes it. */}
       <div className="mdv-palette-scrim" onMouseDown={close} aria-hidden="true" />
 
-      <div
-        className="mdv-palette"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Command palette"
-        onKeyDown={onDialogKeyDown}
-      >
+      {/* No `role="dialog"` and no `aria-modal`: the overlay surface around this
+          carries both, and a second one inside it would be announced twice. */}
+      <div className="mdv-palette" onKeyDown={onDialogKeyDown}>
         <div className="mdv-palette-bar">
           <CommandIcon />
 
@@ -593,7 +387,6 @@ export function CommandPalette({
 
           <button
             type="button"
-            ref={closeRef}
             className="mdv-palette-close"
             aria-label="Close command palette"
             title="Close (Escape)"
@@ -675,6 +468,32 @@ export function CommandPalette({
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                     */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * Everyone else's commands, as rows.
+ *
+ * The palette used to *be* the command registry: `PALETTE_COMMANDS` in
+ * lib/config.ts listed every action in the viewer, and a feature that wanted one
+ * edited that list and then edited `buildCommands` to give it a handler. A
+ * plugin cannot do either — which is the point. It calls `ctx.commands.add` and
+ * appears here, and the palette never learns its name.
+ *
+ * `category` becomes the row's second line rather than a group of its own: the
+ * source column already says "Command", and a reader scanning for "present"
+ * wants to know it comes from presentation, not to find it filed under a heading
+ * they have to scroll to.
+ */
+function contributed(commands: readonly Command[]): PaletteItem[] {
+  return commands.map((command) => ({
+    id: `plugin-command:${command.id}`,
+    source: 'command' as const,
+    title: command.title,
+    detail: command.category,
+    keywords: command.category,
+    hint: command.hint,
+    run: () => void command.run(),
+  }));
+}
 
 /** Consecutive results sharing a source, so the list carries one header each. */
 function groupBySource(

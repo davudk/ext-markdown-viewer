@@ -22,11 +22,7 @@ import {
   buildHeadingItems,
   buildSettingItems,
   createMatcher,
-  getFolder,
   loadFuse,
-  publishFolder,
-  resetFolder,
-  subscribeFolder,
   substringMatch,
   PALETTE_FIELDS,
   type CommandContext,
@@ -437,45 +433,4 @@ test('both matchers agree on an exact query', async () => {
 
   assert.equal(titles(createMatcher(ROWS, PALETTE_FIELDS, fuse, 10)('print'))[0], 'Print');
   assert.equal(titles(createMatcher(ROWS, PALETTE_FIELDS, null, 10)('print'))[0], 'Print');
-});
-
-/* -------------------------------------------------------------------------- */
-/* The folder store                                                            */
-/* -------------------------------------------------------------------------- */
-
-test('the folder store starts empty and says so', () => {
-  resetFolder();
-  const folder = getFolder();
-  assert.equal(folder.supported, false);
-  assert.equal(folder.rootName, null);
-  assert.deepEqual(folder.files, []);
-});
-
-test('publishing reaches subscribers and unsubscribing stops it', () => {
-  resetFolder();
-
-  const seen: (string | null)[] = [];
-  const unsubscribe = subscribeFolder((folder) => seen.push(folder.rootName));
-
-  publishFolder({
-    supported: true,
-    rootName: 'notes',
-    files: [{ id: 'a.md', name: 'a.md', detail: '' }],
-    choose: () => {},
-    open: () => {},
-  });
-
-  assert.deepEqual(seen, ['notes']);
-  assert.equal(getFolder().rootName, 'notes');
-
-  unsubscribe();
-  publishFolder(null);
-  assert.deepEqual(seen, ['notes'], 'an unsubscribed listener was still called');
-
-  // Unpublishing still resets what a late reader sees, which is what removes
-  // "Open folder…" when the Files tab unmounts.
-  assert.equal(getFolder().rootName, null);
-  assert.equal(getFolder().supported, false);
-
-  resetFolder();
 });

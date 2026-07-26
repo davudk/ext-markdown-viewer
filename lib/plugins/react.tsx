@@ -156,7 +156,19 @@ function Contribution({ entry }: { entry: PlacedContribution }) {
   }, [imperative]);
 
   if (!ctx) return null;
-  if (imperative) return <div ref={ref} data-mdv-plugin={entry.pluginId} />;
+  if (imperative) {
+    // `display: contents` because the wrapper is plumbing, not layout: the
+    // shell's `.mdv > :not(nav)` grants every non-nav child `flex: 1 1 auto`,
+    // so a plain div here became a second document column. Found by a plugin
+    // trying to mount an aria-live region.
+    return (
+      <div
+        ref={ref}
+        data-mdv-plugin={entry.pluginId}
+        style={{ display: 'contents' }}
+      />
+    );
+  }
 
   const Body = entry.component;
   return (
@@ -260,8 +272,14 @@ export function OverlayLayer() {
   const restoreTo = useRef<HTMLElement | null>(null);
   const layerRef = useRef<HTMLDivElement>(null);
 
+  // `modal` was accepted and ignored, so the first non-modal overlay — quick
+  // find — inerted the document behind it and made the page unclickable and
+  // unselectable while the find bar was open. Modality is a property of the
+  // stack, not of the topmost surface: one modal anywhere holds the document.
+  const hasModal = overlays.some((overlay) => overlay.modal !== false);
+
   useEffect(() => {
-    if (overlays.length === 0) return;
+    if (overlays.length === 0 || !hasModal) return;
 
     // Captured on the way in, restored on the way out — a modal that returns
     // focus to the body has lost the reader's place.
@@ -269,6 +287,20 @@ export function OverlayLayer() {
 
     const root = document.getElementById('mdv-root');
     root?.setAttribute('inert', '');
+
+    // Scroll lock. `inert` stops interaction but not wheel events, so without
+    // this a flick anywhere outside an opaque overlay scrolls the document
+    // invisibly and loses the reader's place. Both the presentation and
+    // lightbox migrations reported having to keep their own copy; two
+    // independent reports is the threshold for it belonging here.
+    //
+    // The scrollbar's width is paid back as padding, or removing it reflows the
+    // document behind the overlay — visible the moment the overlay closes.
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+    const previousOverflow = document.documentElement.style.overflow;
+    const previousPadding = document.documentElement.style.paddingRight;
+    document.documentElement.style.overflow = 'hidden';
+    if (scrollbar > 0) document.documentElement.style.paddingRight = `${scrollbar}px`;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -314,12 +346,32 @@ export function OverlayLayer() {
 
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
-      if (host.overlays.store.get().length === 0) {
+      if (!host.overlays.store.get().some((o) => o.modal !== false)) {
+        document.documentElement.style.overflow = previousOverflow;
+        document.documentElement.style.paddingRight = previousPadding;
         root?.removeAttribute('inert');
         restoreTo.current?.isConnected && restoreTo.current.focus();
         restoreTo.current = null;
       }
     };
+  }, [overlays.length, hasModal, host]);
+
+  useEffect(() => {
+    if (overlays.length === 0) return;
+
+    // Registered whether or not anything is modal: Escape closes the topmost
+    // overlay either way, and the effect above only runs for modal stacks.
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const top = host.overlays.top();
+      if (!top) return;
+      event.preventDefault();
+      event.stopPropagation();
+      host.overlays.close(top.instanceId);
+    };
+
+    window.addEventListener('keydown', onEscape, true);
+    return () => window.removeEventListener('keydown', onEscape, true);
   }, [overlays.length, host]);
 
   if (overlays.length === 0) return null;
@@ -341,7 +393,8 @@ export function OverlayLayer() {
             aria-label={overlay.label}
             // Only the top overlay is interactive; the rest are scenery.
             // React 19 types `inert` as a boolean, unlike the bare attribute.
-            inert={!isTop}
+            data-mdv-modal={overlay.modal !== false ? '' : undefined}
+            inert={!isTop && overlay.modal !== false}
             // -1 so the surface itself can hold focus when an overlay brings
             // nothing focusable of its own.
             tabIndex={-1}

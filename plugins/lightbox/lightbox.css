@@ -39,15 +39,15 @@
 /* ==========================================================================
    2. Overlay shell
 
-   Fixed and at the top of the stacking order. The viewer's own chrome tops out
-   at z-index 20, but an add-on or a future feature could introduce its own
-   context, and an image viewer that opens *behind* the sidebar is useless.
+   No position and no z-index: this fills `.mdv-overlay`, which the host places
+   and stacks. The `z-index: 2147483000` that used to live here — one of four
+   hand-picked numbers across the codebase — is now the overlay layer's, chosen
+   once for everything modal.
    ========================================================================== */
 
 .mdv-lightbox {
-  position: fixed;
-  inset: 0;
-  z-index: 2147483000;
+  width: 100%;
+  height: 100%;
   display: flex;
 
   /* `--mdv-font-body` is written inline on `.mdv` and is therefore invisible

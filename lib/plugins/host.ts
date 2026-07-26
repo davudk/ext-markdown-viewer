@@ -43,6 +43,17 @@ export interface HostOptions {
   storage: HostStorage;
   document: DocumentHandle;
   logger?: Logger;
+  /**
+   * Where shared settings actually live.
+   *
+   * Without this the host answered `ctx.global` out of its own storage bag,
+   * which nothing bridged to the viewer's settings — so a plugin reading it got
+   * defaults while the options page wrote somewhere else entirely. Three
+   * plugins independently grew the same three-layer workaround before this was
+   * noticed, which is the signal it belonged here. The shell supplies the real
+   * one; the fallback below keeps the host usable in a test.
+   */
+  globalSettings?: GlobalSettings;
 }
 
 export interface PluginStatus {
@@ -278,16 +289,27 @@ export class PluginHost {
       return teardown;
     };
 
-    const global: GlobalSettings = {
-      get current() {
-        return host.stored.global;
-      },
-      async set(patch) {
-        host.stored.global = { ...host.stored.global, ...patch };
-        await host.options.storage.write(host.stored);
-      },
-      onChange: (fn) => own(host.status.subscribe(fn)),
-    };
+    const shared = host.options.globalSettings;
+    const global: GlobalSettings = shared
+      ? {
+          get current() {
+            return shared.current;
+          },
+          set: (patch) => shared.set(patch),
+          onChange: (fn) => own(shared.onChange(fn)),
+        }
+      : {
+          // No shared store wired: fall back to the host's own bag so a test
+          // does not have to build one.
+          get current() {
+            return host.stored.global;
+          },
+          async set(patch) {
+            host.stored.global = { ...host.stored.global, ...patch };
+            await host.options.storage.write(host.stored);
+          },
+          onChange: (fn) => own(host.status.subscribe(fn)),
+        };
 
     return {
       // A getter, not a captured value: a plugin holding this context for the

@@ -21,11 +21,24 @@
   z-index: 2147483000;
 }
 
+/*
+ * A modal surface covers the viewport and takes every click. A non-modal one —
+ * a find bar — must let the document behind it stay clickable and selectable,
+ * so it does not take pointer events itself; its own contents opt back in.
+ */
 .mdv-overlay {
   position: fixed;
   inset: 0;
-  pointer-events: auto;
+  pointer-events: none;
   box-sizing: border-box;
+}
+
+.mdv-overlay[data-mdv-modal] {
+  pointer-events: auto;
+}
+
+.mdv-overlay:not([data-mdv-modal]) > * {
+  pointer-events: auto;
 }
 
 .mdv-overlay *,

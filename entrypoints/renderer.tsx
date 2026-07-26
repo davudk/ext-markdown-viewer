@@ -93,7 +93,6 @@ export default defineUnlistedScript(() => {
         createRoot(host).render(
           <Viewer
             source={source}
-            initialSettings={settings}
             plugins={plugins}
             documentHandle={documentHandle}
           />,

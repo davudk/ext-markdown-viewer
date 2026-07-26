@@ -108,6 +108,40 @@ function Launcher() {
 }
 ```
 
+### Parser extensions
+
+`markdownIt(md, ctx)` runs once, when the parser is built. `lib/markdown.ts`
+calls `host.applyMarkdownIt(md)` and keeps only what is not optional: the
+`MarkdownIt` construction, the `<pre>` markup, task lists and table alignment
+(baseline GFM the export reads unconditionally), DOMPurify, and the
+`{ html, headings }` contract. Every *syntax* is a plugin.
+
+The shell hands the pipeline its host once, at startup:
+
+```ts
+setMarkdownHost(host);   // lib/markdown.ts
+```
+
+Two rules follow from the fact that plugins are applied in load order:
+
+**Order against a rule, never against a plugin.** markdown-it's rulers position
+by name — `inline.ruler.before('link', …)`, `core.ruler.push(…)`. A rule
+inserted relative to a *core* rule (`link`, `math_inline`) cannot be broken by a
+registry edit. `after: [...]` only decides who is applied first, and load order
+is exactly the thing a merge reorders without anyone noticing.
+
+**Keep coupled rules in one `markdownIt`.** `mdv_code_span_wins` must run before
+`math_inline`, so both are installed by `markdown-math` in that order, in one
+function. Splitting them into two plugins ordered by `after:` would express the
+same coupling in the one place the host is free to ignore it.
+
+`test/markdown-order.test.ts` renders every case the ordering is load-bearing
+for with the registry reversed and shuffled, and asserts the output is
+byte-identical. A new markdown plugin belongs in its `CASES`.
+
+Sanitization runs after every plugin, so no plugin can widen what reaches the
+DOM. `PURIFY_CONFIG` allows `svg` for the alert icons; nothing needs it wider.
+
 ### Overlays
 
 Never position a modal yourself.

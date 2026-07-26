@@ -6,43 +6,28 @@
  * and returns its input **unchanged**. Under such a shim every XSS assertion
  * here would pass while the payloads sailed through untouched. The first test
  * exists to catch exactly that.
+ *
+ * Every syntax below now comes from a plugin, so the pipeline is loaded with
+ * the full set applied through the host — see `test/markdown-pipeline.ts`. Not
+ * one assertion changed when they moved, which is the claim the migration was
+ * making. What each plugin does on its *own*, enabled and disabled, is
+ * `test/markdown-plugin-*.test.ts`; that the set is order-independent is
+ * `test/markdown-order.test.ts`.
  */
 import assert from 'node:assert/strict';
 import { before, test } from 'node:test';
-
-import { JSDOM } from 'jsdom';
 
 import {
   MATH_DISPLAY_CLASS,
   MATH_INLINE_CLASS,
   MATH_PLACEHOLDER_CLASS,
 } from '../lib/config.ts';
+import { loadPipeline } from './markdown-pipeline.ts';
 
 let renderMarkdown: typeof import('../lib/markdown.ts').renderMarkdown;
 
 before(async () => {
-  const dom = new JSDOM('', { url: 'https://example.test/' });
-  // DOMPurify binds to whatever `window` exists at import time, so the globals
-  // have to be in place before the module is loaded.
-  // Assigned through a loose view of globalThis: these are DOM globals that
-  // node's type definitions do not declare, and the alternative is seven casts.
-  const globals = globalThis as unknown as Record<string, unknown>;
-  for (const name of [
-    'window',
-    'document',
-    'Node',
-    'DocumentFragment',
-    'HTMLTemplateElement',
-    'NodeFilter',
-    'trustedTypes',
-  ]) {
-    globals[name] =
-      name === 'window'
-        ? dom.window
-        : (dom.window as unknown as Record<string, unknown>)[name];
-  }
-
-  ({ renderMarkdown } = await import('../lib/markdown.ts'));
+  ({ render: renderMarkdown } = await loadPipeline());
 });
 
 test('sanitization is actually running', () => {

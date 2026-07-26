@@ -15,14 +15,14 @@
 /* ==========================================================================
    1. The row menu
 
-   Fixed rather than absolute: it is positioned from viewport coordinates —
-   either the pointer's, or the row's bounding box — and an absolutely
-   positioned popup would be offset by however far the page had scrolled.
+   Absolute inside the host's overlay surface, which is itself fixed and
+   full-viewport — so the pointer coordinates this is positioned from still mean
+   what they say, and it carries no z-index of its own. It used to be a portal
+   onto <body> at 2147483000; stacking is the overlay layer's now.
    ========================================================================== */
 
 .mdv-diff-menu {
-  position: fixed;
-  z-index: 2147483000;
+  position: absolute;
   box-sizing: border-box;
   min-width: 12rem;
   max-width: min(20rem, calc(100vw - 1rem));
@@ -64,12 +64,15 @@
 
 /* ==========================================================================
    2. Overlay shell
+
+   Absolute rather than fixed, and with no z-index: `.mdv-overlay` in
+   lib/plugins/overlays.css is already a fixed full-viewport surface with the
+   layer's stacking on it. This is what fills it.
    ========================================================================== */
 
 .mdv-diff {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 2147483000;
   display: flex;
   box-sizing: border-box;
 
@@ -457,4 +460,51 @@
   .mdv-diff-menu {
     display: none !important;
   }
+}
+
+/* ==========================================================================
+   The picker
+
+   The same dialog frame as a comparison, holding a list instead of a table.
+   It is what the palette's "Compare files…" row opens, which is the first time
+   that row has done anything — the shell never had a handler to pass it.
+   ========================================================================== */
+
+.mdv-diff-picks {
+  margin: 0;
+  padding: 0.4rem;
+  list-style: none;
+}
+
+.mdv-diff-pick {
+  font: inherit;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: var(--mdv-radius-sm);
+}
+
+.mdv-diff-pick:hover {
+  background-color: color-mix(in srgb, var(--mdv-accent) 14%, transparent);
+}
+
+.mdv-diff-pick-name {
+  font-weight: 550;
+}
+
+.mdv-diff-pick-where {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8em;
+  color: var(--mdv-fg-muted);
 }

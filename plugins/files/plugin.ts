@@ -14,7 +14,7 @@ import { Store } from '../../lib/plugins/registry.ts';
 import { PLUGIN_API_VERSION, type Plugin } from '../../lib/plugins/types.ts';
 import { SIDEBAR_TAB_REGION, type SidebarTab } from '../sidebar/tabs.ts';
 
-import type { FolderStatus } from './types.ts';
+import { NO_FOLDER, type FolderBrowserHandle, type FolderStatus } from './types.ts';
 
 export const FILES_PLUGIN_ID = 'files';
 
@@ -40,6 +40,13 @@ export function createFilesPlugin(component: ComponentType): Plugin {
       // reports what it found the moment it mounts, and asking here would mean
       // touching `window` in a plugin that has not rendered anything yet.
       ctx.capabilities.provide('files.status', new Store<FolderStatus>('idle'));
+      // Empty until the tab mounts and fills it, which is the same "legitimately
+      // absent" state every consumer already handles — the palette drops its
+      // folder rows, and the diff drops its picker.
+      ctx.capabilities.provide(
+        'files.browser',
+        new Store<FolderBrowserHandle>(NO_FOLDER),
+      );
     },
   };
 }

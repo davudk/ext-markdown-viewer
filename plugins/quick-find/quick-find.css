@@ -39,20 +39,30 @@
 /* ==========================================================================
    2. Panel
 
-   Fixed, so the shell's flex row never lays it out: an absolutely positioned
-   child of a flex container is not a flex item, which is the only reason
-   `.mdv > :not(nav) { flex: 1 1 auto }` in viewer.css does not stretch this
-   panel into a second column beside the document.
+   Fixed and parked below the toolbar rather than beside it, so however many
+   buttons the toolbar grows the two can never collide.
 
-   Parked below the toolbar rather than beside it, so however many buttons the
-   toolbar grows the two can never collide.
+   No z-index. The panel is a host-managed overlay, and `.mdv-overlay` in
+   lib/plugins/overlays.css already carries the layer's stacking — the old `30`
+   was one of the hand-picked numbers the overlay manager exists to remove.
+
+   The `:has` rule below is a local workaround and not a pattern to copy. An
+   overlay surface is `inset: 0` with `pointer-events: auto`, which is right for
+   a modal that fills the screen and wrong for a find bar in a corner: it would
+   swallow every click on the document behind it. Quick find is the first
+   non-modal overlay, and until `OverlayOptions.modal` actually means something
+   to the layer this is how it gets its clicks back.
    ========================================================================== */
+
+.mdv-overlay:has(> .mdv-search) {
+  pointer-events: none;
+}
 
 .mdv-search {
   position: fixed;
   top: 3.35rem;
   right: 0.6rem;
-  z-index: 30;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   width: min(25rem, calc(100vw - 1.2rem));

@@ -191,9 +191,12 @@ function auditFetchCallSites() {
     [...declared[1].matchAll(/'([^']+)'/g)].map((match) => match[1]),
   );
 
-  const sources = ['lib', 'entrypoints', 'components'].flatMap((dir) =>
-    walk(dir).filter((file) => /\.tsx?$/.test(file)),
-  );
+  // `plugins` is in this list because it was once missing from it: features
+  // moved out of `components` into plugin folders, and a request made from one
+  // would have been entirely unpoliced — the opposite of what the guard claims.
+  const sources = ['lib', 'entrypoints', 'components', 'plugins']
+    .filter((dir) => existsSync(dir))
+    .flatMap((dir) => walk(dir).filter((file) => /\.tsx?$/.test(file)));
 
   for (const file of sources) {
     const code = stripCommentsAndStrings(readFileSync(file, 'utf8'));

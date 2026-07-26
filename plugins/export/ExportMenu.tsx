@@ -4,118 +4,64 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent,
 } from 'react';
 
-import type { ExportBridge } from '@/entrypoints/export-addon';
-import {
-  EXPORT_BRIDGE_KEY,
-  EXPORT_FORMATS,
-  VIEWER_THEME_DATASET_KEY,
-  type ExportFormat,
-} from '@/lib/config';
-// Types only, all of them. A value import from `lib/export.ts` would pull
-// `docx` — some 400 kB of OOXML writer — into the renderer for every document
-// that is merely read, which is the entire reason the export is an add-on.
-import type { ExportProgress, ExportTypography } from '@/lib/export';
-import { sendMessage, type AddonResult } from '@/lib/messages';
+import { EXPORT_FORMATS, type ExportFormat } from '../../lib/config.ts';
+import type { ExportProgress } from '../../lib/export.ts';
+import { useDocument, usePlugin, usePluginHost } from '../../lib/plugins/react.tsx';
 
+import type { ExportStatus } from './plugin.ts';
 import './export-menu.css';
 
-/** How long a completed message stays before the menu goes quiet again. */
-const RESULT_MS = 6000;
-
-/** Where the document lives when the caller does not say. */
-const DEFAULT_BODY_SELECTOR = '.mdv-body';
-
-interface BridgeHost {
-  [EXPORT_BRIDGE_KEY]?: ExportBridge;
-}
+const IDLE: ExportStatus = { state: 'idle' };
+const noopSubscribe = () => () => {};
 
 /**
- * The export machinery, injected the first time it is wanted.
+ * The export menu: one entry per format, plus the progress and outcome of the
+ * export in flight.
  *
- * `entrypoints/export-addon.ts` publishes a function on the isolated world's
- * `window` — the same world this component runs in — and the service worker is
- * asked to put it there. Every way this can go wrong ends in a thrown error the
- * caller reports: the message failing, the injection being refused, or the
- * property still being absent afterwards. None of them ends in waiting.
+ * This is now only the view. The add-on injection, the run and the reporting
+ * moved into `plugin.ts` and are published as the `export` capability, which is
+ * what lets the command palette offer the same two actions without this
+ * component being on screen — or mounted at all.
+ *
+ * What is left is the button, the menu keyboard model, and an honest report. A
+ * document with cross-origin images cannot be fully embedded without a network
+ * request, so a perfectly ordinary export can succeed *partially*. Saying so
+ * ("exported, 3 images could not be embedded") is the difference between a
+ * reader who knows to check the file and one who finds out later.
+ *
+ * Deliberately not an overlay. `ctx.ui.openOverlay` is for modal surfaces — it
+ * inerts the document beneath and traps focus, which is exactly wrong for a menu
+ * button whose whole contract is that Tab leaves it. This stays an absolutely
+ * positioned popup anchored under its own trigger, inside its own stacking
+ * context, and picks no new number to do it.
  */
-async function exportBridge(): Promise<ExportBridge> {
-  const host = window as BridgeHost;
-  // Already injected — by an earlier export in this document, or by one in a
-  // document the reader has since navigated away from within the same page.
-  const installed = host[EXPORT_BRIDGE_KEY];
-  if (installed) return installed;
+export function ExportMenu() {
+  const ctx = usePlugin();
+  const host = usePluginHost();
+  const doc = useDocument();
 
-  const result = await sendMessage<AddonResult>({
-    type: 'INJECT_ADDON',
-    addon: 'export',
-  });
-  if (!result?.ok) {
-    throw new Error(result?.error ?? 'the export add-on could not be injected');
-  }
+  // The controller is this plugin's own, but it is read through the registry
+  // rather than closed over: a contribution is declared before any context
+  // exists, and the store is what tells React when it appeared.
+  useSyncExternalStore(host.capabilities.store.subscribe, () =>
+    host.capabilities.store.get(),
+  );
+  const exporter = ctx.capabilities.use('export');
 
-  const bridge = host[EXPORT_BRIDGE_KEY];
-  // `executeScript` has resolved, so the script has finished running. Nothing
-  // here means it declined — no viewer on the page — rather than that it is
-  // still on its way.
-  if (!bridge) throw new Error('the export add-on did not install');
+  const status = useSyncExternalStore(
+    exporter?.status.subscribe ?? noopSubscribe,
+    () => exporter?.status.get() ?? IDLE,
+  );
 
-  return bridge;
-}
-
-export interface ExportMenuProps {
-  /**
-   * Resolves the live rendered document. Defaults to the `.mdv-body` in the
-   * page — the export needs the *rendered* element rather than the markdown,
-   * because the images it embeds are the ones already decoded there.
-   */
-  getBody?: () => Element | null;
-  /** Resolved theme. Defaults to whatever `data-mdv-theme` says on <html>. */
-  theme?: string;
-  /** The reader's typography, so the exported HTML matches their screen. */
-  typography?: ExportTypography;
-  /** The document's own address. Defaults to `location.href`. */
-  url?: string;
-}
-
-type Status =
-  | { state: 'idle' }
-  | { state: 'busy'; progress: ExportProgress | null }
-  | { state: 'done'; message: string }
-  | { state: 'failed'; message: string };
-
-/**
- * The export menu: one entry per format in `EXPORT_FORMATS`, plus the progress
- * and outcome of the export in flight.
- *
- * Everything real happens in `entrypoints/export-addon.ts`, which is asked for
- * on the first click and reached through `exportBridge` below; this is the
- * button, the menu keyboard model, and — the part worth the code — an honest
- * report. That includes the add-on failing to arrive, which surfaces in the
- * same assertive live region as any other export failure. A document
- * with cross-origin images cannot be fully embedded without a network request,
- * so a perfectly ordinary export can succeed *partially*. Saying so ("exported,
- * 3 images could not be embedded") is the difference between a reader who knows
- * to check the file and one who finds out later.
- *
- * The root carries `data-mdv-chrome`, which is what keeps it off the printed
- * page and out of the export it produces.
- */
-export function ExportMenu({
-  getBody,
-  theme,
-  typography,
-  url,
-}: ExportMenuProps) {
   const [open, setOpen] = useState(false);
-  const [status, setStatus] = useState<Status>({ state: 'idle' });
 
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const itemsRef = useRef<(HTMLButtonElement | null)[]>([]);
-  const resultTimer = useRef(0);
 
   const menuId = useId();
   const busy = status.state === 'busy';
@@ -152,59 +98,12 @@ export function ExportMenu({
     if (open) itemsRef.current[0]?.focus();
   }, [open]);
 
-  useEffect(() => () => clearTimeout(resultTimer.current), []);
-
-  const settle = useCallback((next: Status) => {
-    setStatus(next);
-    clearTimeout(resultTimer.current);
-    resultTimer.current = window.setTimeout(() => {
-      // Back to idle so an identical message next time still reads as a change,
-      // which is the only way a live region announces it twice.
-      setStatus({ state: 'idle' });
-    }, RESULT_MS);
-  }, []);
-
   const run = useCallback(
-    async (format: ExportFormat) => {
+    (format: ExportFormat) => {
       close(true);
-
-      const body = getBody ? getBody() : document.querySelector(DEFAULT_BODY_SELECTOR);
-      if (!body) {
-        settle({ state: 'failed', message: 'Nothing to export — the document is not rendered.' });
-        return;
-      }
-
-      setStatus({ state: 'busy', progress: null });
-
-      try {
-        // Injected on first use rather than at render time: unlike mermaid,
-        // nothing in a document says whether it will ever be exported.
-        const runExport = await exportBridge();
-
-        const result = await runExport({
-          format,
-          body,
-          theme: theme ?? document.documentElement.dataset[VIEWER_THEME_DATASET_KEY],
-          typography,
-          url,
-          onProgress: (progress) => setStatus({ state: 'busy', progress }),
-        });
-
-        settle({
-          state: 'done',
-          message:
-            result.skippedImages > 0
-              ? `Exported ${result.filename} — ${countImages(result.skippedImages)} could not be embedded.`
-              : `Exported ${result.filename}.`,
-        });
-      } catch (error) {
-        settle({
-          state: 'failed',
-          message: `Export failed: ${describe(error)}`,
-        });
-      }
+      void exporter?.run(format);
     },
-    [close, getBody, settle, theme, typography, url],
+    [close, exporter],
   );
 
   /** Arrow-key roving focus, which is what makes this a menu and not a popup. */
@@ -242,6 +141,12 @@ export function ExportMenu({
     },
     [close],
   );
+
+  // The raw view has no rendered document to export. The shell used to say this
+  // with `showRaw ? null :` at the mount site; the shared document answers it
+  // here now, and the capability stays available either way — a palette row that
+  // exports the rendered document is still the right thing to offer.
+  if (doc.isRaw || !exporter) return null;
 
   return (
     <div className="mdv-export" ref={rootRef} data-mdv-chrome>
@@ -282,7 +187,7 @@ export function ExportMenu({
               ref={(node) => {
                 itemsRef.current[index] = node;
               }}
-              onClick={() => void run(format.value)}
+              onClick={() => run(format.value)}
             >
               <span className="mdv-export-item-label">{format.label}</span>
               <span className="mdv-export-item-ext">{format.extension}</span>
@@ -351,16 +256,7 @@ function Progress({ progress }: { progress: ExportProgress | null }) {
   );
 }
 
-function countImages(count: number): string {
-  return count === 1 ? '1 image' : `${count} images`;
-}
-
-function describe(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  // A stack-length message in a toast helps nobody; the console still has it.
-  return message.length > 120 ? `${message.slice(0, 117)}…` : message;
-}
-
+/** Inline, because the extension never loads a resource of any kind. */
 function DownloadIcon() {
   return (
     <svg

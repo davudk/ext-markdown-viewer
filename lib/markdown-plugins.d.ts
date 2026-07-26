@@ -1,11 +1,15 @@
 /**
  * Types for the markdown-it plugins that ship none.
  *
- * Narrowed to the surface `lib/markdown.ts` actually uses rather than
- * transcribed from each README: an option this file does not name is an option
- * the pipeline does not set, and a wider declaration would only make it easier
- * to set one by accident. Everything else in the plugin set carries its own
- * types and is imported normally.
+ * Narrowed to the surface the pipeline actually uses rather than transcribed
+ * from each README: an option not named here is an option the pipeline does not
+ * set, and a wider declaration would only make it easier to set one by accident.
+ * Everything else in the plugin set carries its own types and is imported
+ * normally.
+ *
+ * These are consumed by `plugins/markdown-*` now rather than by
+ * `lib/markdown.ts`; the file stays under `lib/` because it declares modules,
+ * not a location.
  */
 
 declare module 'markdown-it-container' {

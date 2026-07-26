@@ -10,12 +10,34 @@
  * commit with `npm run verify` green either side.
  */
 
+import { codeCopyPlugin } from '@/plugins/code-copy';
+import { commandPalettePlugin } from '@/plugins/command-palette';
+import { diffPlugin } from '@/plugins/diff';
+import { exportPlugin } from '@/plugins/export';
 import { externalLinksPlugin } from '@/plugins/external-links';
 import { filesPlugin } from '@/plugins/files';
+import { headingAnchorsPlugin } from '@/plugins/heading-anchors';
+import { headingFoldPlugin } from '@/plugins/heading-fold';
+import { lightboxPlugin } from '@/plugins/lightbox';
+import { liveReloadPlugin } from '@/plugins/live-reload';
+import { markdownContainersPlugin } from '@/plugins/markdown-containers';
+import { markdownEmojiPlugin } from '@/plugins/markdown-emoji';
+import { markdownFootnotesPlugin } from '@/plugins/markdown-footnotes';
+import { markdownGithubAlertsPlugin } from '@/plugins/markdown-github-alerts';
+import { markdownHeadingsPlugin } from '@/plugins/markdown-headings';
+import { markdownMathPlugin } from '@/plugins/markdown-math';
+import { markdownMermaidPlugin } from '@/plugins/markdown-mermaid';
+import { markdownTablesPlugin } from '@/plugins/markdown-tables';
+import { markdownWikilinksPlugin } from '@/plugins/markdown-wikilinks';
 import { outlinePlugin } from '@/plugins/outline';
 import { presentationPlugin } from '@/plugins/presentation';
+import { quickFindPlugin } from '@/plugins/quick-find';
+import { readingStatusPlugin } from '@/plugins/reading-status';
+import { scrollMemoryPlugin } from '@/plugins/scroll-memory';
 import { searchPanelPlugin } from '@/plugins/search-panel';
 import { sidebarPlugin } from '@/plugins/sidebar';
+import { themePlugin } from '@/plugins/theme';
+import { typographyPlugin } from '@/plugins/typography';
 
 import type { AnyPlugin } from './types.ts';
 
@@ -28,12 +50,50 @@ import type { OpenedDocument } from '@/plugins/files/types';
  * this list is sorted.
  */
 export const PLUGINS: readonly AnyPlugin[] = [
+  // Appearance first: both write to the document before anything reads it.
+  themePlugin,
+  typographyPlugin,
+
+  // The markdown pipeline. Order here is documentation, not a requirement —
+  // each rule is positioned against a markdown-it rule name rather than against
+  // another plugin, and `test/markdown-order.test.ts` renders the whole set
+  // reversed and shuffled to prove the output is byte-identical.
+  markdownFootnotesPlugin,
+  markdownEmojiPlugin,
+  markdownTablesPlugin,
+  markdownGithubAlertsPlugin,
+  markdownContainersPlugin,
+  markdownMathPlugin,
+  markdownMermaidPlugin,
+  markdownWikilinksPlugin,
+  markdownHeadingsPlugin,
+
+  // Passes over the rendered document.
   externalLinksPlugin,
-  presentationPlugin,
+  codeCopyPlugin,
+  headingAnchorsPlugin,
+  headingFoldPlugin,
+  readingStatusPlugin,
+
+  // The sidebar publishes `sidebar.tab`; the three below fill it. A tab
+  // contributed while the sidebar is disabled is inert, not an error.
   sidebarPlugin,
   outlinePlugin,
   filesPlugin,
   searchPanelPlugin,
+
+  // Surfaces. The palette reads the others through capabilities, so it loads
+  // after them and simply drops a row for anything absent.
+  lightboxPlugin,
+  presentationPlugin,
+  exportPlugin,
+  diffPlugin,
+  quickFindPlugin,
+  commandPalettePlugin,
+
+  // Behaviours with no UI of their own.
+  scrollMemoryPlugin,
+  liveReloadPlugin,
 ];
 
 /**

@@ -5,19 +5,17 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 
-import {
-  SEARCH_DOCUMENT_KEY,
-  SEARCH_MATCH_LIMIT,
-  SHORTCUTS,
-} from '@/lib/config';
-import type { Heading } from '@/lib/markdown';
-import { isFailure, searchClient } from '@/lib/search-client';
-import { snippetAround, type RawMatch, type SearchOptions } from '@/lib/search';
+import { SEARCH_DOCUMENT_KEY, SEARCH_MATCH_LIMIT } from '../../lib/config.ts';
+import type { Heading } from '../../lib/markdown.ts';
+import { useDocument, usePlugin, usePluginHost } from '../../lib/plugins/react.tsx';
+import { isFailure, searchClient } from '../../lib/search-client.ts';
+import { snippetAround, type RawMatch, type SearchOptions } from '../../lib/search.ts';
 
-import './search.css';
+import './quick-find.css';
 
 /** Keystroke settling time before a query is run. One keypress, not one search. */
 const DEBOUNCE_MS = 110;
@@ -414,18 +412,30 @@ function unpaint() {
  *
  * It takes over ctrl/cmd+F deliberately, which is only defensible because it
  * does more than the bar it replaces — the section grouping is the reason it
- * exists. Escape always closes it and hands focus back. The sidebar's Search tab
- * is the other half of the feature and answers a different question: this one is
- * find-next through what is on screen, that one is every match in the file, with
- * line numbers, across every file in a folder.
+ * exists. The sidebar's Search tab is the other half of the feature and answers
+ * a different question: this one is find-next through what is on screen, that
+ * one is every match in the file, with line numbers, across every file in a
+ * folder.
+ *
+ * The panel is a host-managed overlay now, and what that deleted from this file
+ * is the whole of its "am I open" machinery: the `open` state, the `openRef` the
+ * window listener read it through, that listener itself, the ctrl/cmd+F and `/`
+ * key handling, the Escape branch, the `restoreRef` and the effect that put
+ * focus back where it came from. Opening is a shortcut in `plugin.ts`; Escape,
+ * focus and focus restore are the host's; the panel is only ever mounted while
+ * it is showing.
  *
  * Nothing here writes to the document. The index is read once per document with
  * a TreeWalker, the *text* of it is handed to the search worker, and the offsets
  * that come back are painted as ranges. The only DOM this component owns is its
  * own panel.
  */
-export function Search({ headings }: { headings: Heading[] }) {
-  const [open, setOpen] = useState(false);
+export function QuickFind({ close }: { close: () => void }) {
+  const ctx = usePlugin();
+  const host = usePluginHost();
+  const doc = useDocument();
+  const headings = doc.headings as Heading[];
+
   const [query, setQuery] = useState('');
   const [settled, setSettled] = useState('');
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -443,12 +453,6 @@ export function Search({ headings }: { headings: Heading[] }) {
   const runRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const restoreRef = useRef<HTMLElement | null>(null);
-  // The window listener is bound once; this is how it reads current state.
-  const openRef = useRef(open);
-  useEffect(() => {
-    openRef.current = open;
-  });
 
   const listId = useId();
   const optionId = (position: number) => `${listId}-${position}`;
@@ -457,7 +461,8 @@ export function Search({ headings }: { headings: Heading[] }) {
 
   /** The cached index, rebuilt only when the document or the outline changed. */
   const getIndex = useCallback((): DocIndex | null => {
-    const body = document.querySelector<HTMLElement>('main.mdv-body');
+    // The shared document, rather than a fifth `.mdv-body` lookup of its own.
+    const body = doc.body;
     if (!body) return null;
 
     const cached = indexRef.current;
@@ -468,41 +473,33 @@ export function Search({ headings }: { headings: Heading[] }) {
     const built = buildIndex(body, headings);
     indexRef.current = built;
     return built;
-  }, [headings]);
+  }, [doc, headings]);
 
-  /* --- opening and closing ------------------------------------------------ */
+  /* --- opening ------------------------------------------------------------ */
 
-  const openPanel = useCallback(() => {
-    if (!openRef.current) {
-      const active = document.activeElement;
-      restoreRef.current = active instanceof HTMLElement ? active : null;
-      setOpen(true);
-      return;
-    }
+  /**
+   * Focus and select, on the way in and on every re-press of the shortcut.
+   *
+   * The host focuses the first focusable thing in an overlay, which is this
+   * field — but it does not *select* what is in it, and `OverlayOptions` has no
+   * `initialFocus` to say so. "Already open" is also not a close: ctrl/cmd+F
+   * pressed a second time means "start a new search", and `openOverlay` being
+   * idempotent per id means the plugin has to answer that itself. It does, by
+   * bumping a counter this reads.
+   */
+  useSyncExternalStore(host.capabilities.store.subscribe, () =>
+    host.capabilities.store.get(),
+  );
+  const restarts = ctx.capabilities.use('quick-find')?.restarts;
+  const restart = useSyncExternalStore(
+    restarts?.subscribe ?? noopSubscribe,
+    () => restarts?.get() ?? 0,
+  );
 
-    // Already open: the shortcut means "start a new search", so the standing
-    // query is selected rather than the panel being toggled shut under a reader
-    // who pressed the key out of habit.
+  useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
-  }, []);
-
-  const closePanel = useCallback(() => setOpen(false), []);
-
-  // Focus in on open, and back where it came from on close. Both have to happen
-  // after the commit — restoring before the panel unmounts would move focus to
-  // an element that is about to take it back on the way out.
-  useEffect(() => {
-    if (open) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-      return;
-    }
-
-    const restore = restoreRef.current;
-    restoreRef.current = null;
-    if (restore?.isConnected) restore.focus();
-  }, [open]);
+  }, [restart]);
 
   // The walk is the one expensive step, and on a multi-MB document it is the
   // reader's first keystroke that would otherwise pay for it. Opening the panel
@@ -510,60 +507,14 @@ export function Search({ headings }: { headings: Heading[] }) {
   // the keyboard, and the worker is handed the text at the same time, so the
   // first query is a postMessage of a few bytes rather than of the document.
   useEffect(() => {
-    if (!open || typeof requestIdleCallback !== 'function') return;
+    if (typeof requestIdleCallback !== 'function') return;
 
     const handle = requestIdleCallback(() => {
       const index = getIndex();
       if (index) searchClient().put(SEARCH_DOCUMENT_KEY, index.text);
     });
     return () => cancelIdleCallback(handle);
-  }, [open, getIndex]);
-
-  /* --- global keys -------------------------------------------------------- */
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing) return;
-
-      // ctrl/cmd+F, from anywhere including a field the reader is typing in:
-      // the takeover is only honest if it is unconditional, and a modified F
-      // is never part of what somebody is typing. Shift+ctrl/cmd+F belongs to
-      // the sidebar's Search tab, so it is left alone here.
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        !event.altKey &&
-        !event.shiftKey &&
-        event.key.toLowerCase() === 'f'
-      ) {
-        event.preventDefault();
-        openPanel();
-        return;
-      }
-
-      if (openRef.current && event.key === 'Escape') {
-        event.preventDefault();
-        closePanel();
-        return;
-      }
-
-      // `/` is a bare key, so it belongs to whatever has focus first — in a
-      // field it is a character, and stealing it would make the search box
-      // impossible to type a path into.
-      if (
-        event.key === SHORTCUTS.search &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        !event.metaKey &&
-        !isTypingTarget(event.target)
-      ) {
-        event.preventDefault();
-        openPanel();
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [openPanel, closePanel]);
+  }, [getIndex]);
 
   /* --- query pipeline ----------------------------------------------------- */
 
@@ -573,8 +524,6 @@ export function Search({ headings }: { headings: Heading[] }) {
   }, [query]);
 
   useEffect(() => {
-    if (!open) return;
-
     if (settled.length === 0) {
       setResult(NO_RESULT);
       setCurrent(0);
@@ -629,7 +578,7 @@ export function Search({ headings }: { headings: Heading[] }) {
       });
 
     return () => controller.abort();
-  }, [open, settled, caseSensitive, wholeWord, revision, getIndex]);
+  }, [settled, caseSensitive, wholeWord, revision, getIndex]);
 
   // Nothing this component does mutates the document, so every callback here is
   // somebody else's edit — a mermaid diagram swapping in, live reload replacing
@@ -637,9 +586,7 @@ export function Search({ headings }: { headings: Heading[] }) {
   // fiction. The attribute filter is the fold: it changes no text and moves no
   // node, but it changes what the index is allowed to contain.
   useEffect(() => {
-    if (!open) return;
-
-    const body = document.querySelector<HTMLElement>('main.mdv-body');
+    const body = doc.body;
     if (!body) return;
 
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -661,22 +608,16 @@ export function Search({ headings }: { headings: Heading[] }) {
       observer.disconnect();
       clearTimeout(timer);
     };
-  }, [open]);
+  }, [doc]);
 
   useEffect(() => {
-    if (!open) return;
     paint(indexRef.current, result.matches, current);
     return unpaint;
-  }, [open, result, current]);
+  }, [result, current]);
 
   // Polite, and late: announcing a count that is still changing turns every
   // keystroke into an interruption. One message once the query has stopped.
   useEffect(() => {
-    if (!open) {
-      setAnnouncement('');
-      return;
-    }
-
     const timer = setTimeout(() => {
       if (settled.length === 0) setAnnouncement('');
       else if (total === 0) setAnnouncement(`No matches for ${settled}`);
@@ -684,7 +625,7 @@ export function Search({ headings }: { headings: Heading[] }) {
     }, ANNOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [open, settled, total, current]);
+  }, [settled, total, current]);
 
   /* --- navigation --------------------------------------------------------- */
 
@@ -781,14 +722,11 @@ export function Search({ headings }: { headings: Heading[] }) {
   // Keep the active result in view inside the panel's own scroller. `nearest`
   // so it never scrolls the page — the panel is fixed and already on screen.
   useEffect(() => {
-    if (!open) return;
     const active = listRef.current?.querySelector(
       `#${CSS.escape(`${listId}-${current}`)}`,
     );
     active?.scrollIntoView({ block: 'nearest' });
-  }, [open, current, result, listId]);
-
-  if (!open) return null;
+  }, [current, result, listId]);
 
   const counted =
     total === 0
@@ -878,7 +816,7 @@ export function Search({ headings }: { headings: Heading[] }) {
             className="mdv-search-button"
             aria-label="Close search"
             title="Close search (Escape)"
-            onClick={closePanel}
+            onClick={close}
           >
             <CloseIcon />
           </button>
@@ -948,12 +886,7 @@ export function Search({ headings }: { headings: Heading[] }) {
   );
 }
 
-/** Whether a keystroke belongs to whatever the reader is typing into. */
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  if (target.isContentEditable) return true;
-  return ['input', 'textarea', 'select'].includes(target.tagName.toLowerCase());
-}
+const noopSubscribe = () => () => {};
 
 /* -------------------------------------------------------------------------- */
 /* Icons — inline, because the extension never loads a resource of any kind.   */

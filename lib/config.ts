@@ -625,7 +625,7 @@ export const DEFAULT_SETTINGS: Settings = {
  * `scripts/audit-network.mjs`, so a request appearing anywhere else fails the
  * build rather than being noticed in review.
  */
-export const FETCH_ALLOWLIST = ['lib/hooks.ts'];
+export const FETCH_ALLOWLIST = ['lib/live-reload.ts'];
 
 /** The single chrome.storage.local key settings are stored under. */
 export const SETTINGS_KEY = 'settings';

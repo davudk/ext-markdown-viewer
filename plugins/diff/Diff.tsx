@@ -5,20 +5,18 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { createPortal } from 'react-dom';
 
 import {
   DEFAULT_DIFF_LAYOUT,
   DEFAULT_DIFF_MODE,
   DIFF_LAYOUT_OPTIONS,
   DIFF_MODE_OPTIONS,
-  VIEWER_ROOT_ID,
   type DiffLayout,
   type DiffMode,
-} from '@/lib/config';
+} from '../../lib/config.ts';
 import {
   changeBlocks,
   collapseContext,
@@ -31,23 +29,213 @@ import {
   type DiffEngine,
   type DiffRow,
   type DiffStats,
-} from '@/lib/diff';
-import { renderMarkdown } from '@/lib/markdown';
+} from '../../lib/diff.ts';
+import { renderMarkdown } from '../../lib/markdown.ts';
+import { useDocument, usePlugin, usePluginHost } from '../../lib/plugins/react.tsx';
+import type { Teardown } from '../../lib/plugins/types.ts';
 
+import type { DiffCapability } from './plugin.ts';
 import './diff.css';
-
-const FOCUSABLE =
-  'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
 /** Distance the menu is kept from the edge of the viewport. */
 const MENU_MARGIN_PX = 8;
 
-/** What the reader is currently looking at. */
-type Phase = 'menu' | 'loading' | 'ready' | 'error';
+/** What the comparison is currently doing. The menu is its own overlay now. */
+type Phase = 'loading' | 'ready' | 'error';
 
 interface Side {
   name: string;
   source: string;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reaching the plugin's own state                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * This plugin's capability, and the file it is pointed at.
+ *
+ * The three views below are separate overlays with no parent between them, so
+ * the subject of the comparison lives in a `Store` in `setup` rather than in
+ * React state — the host renders each of them inside this plugin's context, and
+ * this is how they find it.
+ */
+function useDiff(): { differ: DiffCapability | undefined; target: CompareRequest | null } {
+  const ctx = usePlugin();
+  const host = usePluginHost();
+
+  useSyncExternalStore(host.capabilities.store.subscribe, () =>
+    host.capabilities.store.get(),
+  );
+  const differ = ctx.capabilities.use('diff');
+
+  const target = useSyncExternalStore(
+    differ?.target.subscribe ?? noopSubscribe,
+    () => differ?.target.get() ?? null,
+  );
+
+  return { differ, target };
+}
+
+const noopSubscribe = () => () => {};
+
+/* -------------------------------------------------------------------------- */
+/* The row menu                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One item, over the row that raised it.
+ *
+ * A right-click is a question, not a command: nothing is read off disk and no
+ * library is loaded until the reader actually picks the item.
+ *
+ * It is an overlay rather than a portal because everything it needed from one —
+ * being above the document, Escape closing it, focus landing on the item and
+ * going back to the row afterwards — is what the host does for every overlay. It
+ * is positioned inside that surface rather than against the viewport, which is
+ * how it stopped carrying a `z-index` of its own.
+ */
+export function DiffMenu({ close }: { close: () => void }) {
+  const { differ, target } = useDiff();
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // A menu that survives the page scrolling out from under it is a menu
+    // floating over the wrong row. The document beneath an overlay is inert but
+    // still scrollable, so this is as true as it was.
+    const onScroll = () => close();
+    // Outside the menu means outside: the overlay surface covers the viewport,
+    // so a click anywhere else lands on it rather than on the document.
+    const onPointerDown = (event: PointerEvent) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      close();
+    };
+
+    document.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [close]);
+
+  if (!target) return null;
+
+  return (
+    <div
+      ref={menuRef}
+      className="mdv-diff-menu"
+      data-mdv-chrome
+      role="menu"
+      aria-label={`Actions for ${target.name}`}
+      style={menuPosition(target)}
+    >
+      <button
+        type="button"
+        className="mdv-diff-menu-item"
+        role="menuitem"
+        title={target.path}
+        onClick={() => differ?.start()}
+      >
+        Compare with current file
+      </button>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* The picker                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Choosing the other file without a right-click.
+ *
+ * The command palette has had a "Compare files…" row in `PALETTE_COMMANDS` since
+ * before this feature was a plugin, and it has never once appeared: the shell
+ * had no handler to pass, so `buildCommands` dropped it every time. It appears
+ * now, and this is what it opens — the open folder's files, and nothing when
+ * there is no folder, which is the honest answer rather than an empty dialog.
+ */
+export function DiffPicker({ close }: { close: () => void }) {
+  const ctx = usePlugin();
+  const host = usePluginHost();
+  const { differ } = useDiff();
+
+  useSyncExternalStore(host.capabilities.store.subscribe, () =>
+    host.capabilities.store.get(),
+  );
+  const browser = ctx.capabilities.use('files.browser');
+  const folder = useSyncExternalStore(
+    browser?.subscribe ?? noopSubscribe,
+    () => browser?.get(),
+  );
+
+  const files = folder?.files ?? [];
+  const titleId = useId();
+
+  const pick = (id: string, name: string) => {
+    if (!folder || !differ) return;
+    differ.target.set({
+      name,
+      path: id,
+      // A thunk, not the text: listing files must not read them off disk.
+      read: () => folder.read(id),
+      anchor: null,
+      origin: null,
+    });
+    differ.start();
+  };
+
+  return (
+    <div className="mdv-diff" data-mdv-chrome>
+      <div className="mdv-diff-dialog mdv-diff-picker" aria-labelledby={titleId}>
+        <header className="mdv-diff-bar">
+          <h2 className="mdv-diff-title" id={titleId}>
+            Compare with…
+          </h2>
+          <div className="mdv-diff-actions">
+            <button
+              type="button"
+              className="mdv-diff-tool"
+              aria-label="Close"
+              title="Close (Esc)"
+              onClick={close}
+            >
+              <CloseIcon />
+            </button>
+          </div>
+        </header>
+
+        <div className="mdv-diff-scroll" tabIndex={-1}>
+          {files.length === 0 ? (
+            <p className="mdv-diff-note" role="status">
+              No folder is open, so there is nothing to compare against. Open one
+              from the Files tab in the sidebar.
+            </p>
+          ) : (
+            <ul className="mdv-diff-picks">
+              {files.map((file) => (
+                <li key={file.id}>
+                  <button
+                    type="button"
+                    className="mdv-diff-pick"
+                    title={file.id}
+                    onClick={() => pick(file.id, file.name)}
+                  >
+                    <span className="mdv-diff-pick-name">{file.name}</span>
+                    <span className="mdv-diff-pick-where">{file.detail}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -72,25 +260,15 @@ interface Side {
  * write path anywhere in this component: it holds two strings it was given and
  * draws them side by side.
  */
-export function Diff({
-  request,
-  currentName,
-  currentSource,
-  onClose,
-}: {
-  /** The row menu the folder tree raised, or null when there is nothing to do. */
-  request: CompareRequest | null;
-  /** Name of the document on screen. Shown as one side of the header. */
-  currentName: string;
-  /** Its markdown source — the other half of every comparison. */
-  currentSource: string;
-  /**
-   * Clears `request`. Called both when the menu is dismissed without a choice
-   * and when the comparison itself is closed, so the owner needs one handler.
-   */
-  onClose: () => void;
-}) {
-  const [phase, setPhase] = useState<Phase>('menu');
+export function DiffView({ close }: { close: () => void }) {
+  const ctx = usePlugin();
+  const doc = useDocument();
+  const { target: request } = useDiff();
+
+  const currentSource = doc.source;
+  const currentName = documentName(doc.url);
+
+  const [phase, setPhase] = useState<Phase>('loading');
   const [engine, setEngine] = useState<DiffEngine | null>(null);
   const [other, setOther] = useState<Side | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -101,33 +279,9 @@ export function Diff({
   const [cursor, setCursor] = useState(0);
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
 
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
-  const itemRef = useRef<HTMLButtonElement>(null);
 
   const titleId = useId();
-
-  // Every new request starts from nothing: a comparison left open in the
-  // background would otherwise reappear against the wrong file.
-  useEffect(() => {
-    setPhase('menu');
-    setEngine(null);
-    setOther(null);
-    setError(null);
-    setSwapped(false);
-    setCursor(0);
-    setExpanded(new Set());
-  }, [request]);
-
-  const dismiss = useCallback(() => {
-    // Focus first, then unmount: `request.origin` is a row in the sidebar and
-    // is still in the document either way, but restoring before the overlay
-    // goes away avoids a frame with focus on <body>.
-    request?.origin?.focus({ preventScroll: true });
-    onClose();
-  }, [request, onClose]);
 
   /* ------------------------------------------------------------------------ */
   /* Starting the comparison                                                   */
@@ -138,6 +292,8 @@ export function Diff({
 
     setPhase('loading');
     setError(null);
+    setEngine(null);
+    setOther(null);
 
     try {
       // Both at once: reading the file is disk-bound and injecting the add-on
@@ -221,155 +377,64 @@ export function Diff({
   );
 
   /* ------------------------------------------------------------------------ */
-  /* Modal behaviour                                                           */
+  /* Modal behaviour, and the keys                                             */
   /* ------------------------------------------------------------------------ */
 
-  const isOverlay = request !== null && phase !== 'menu';
-
+  // The comparison begins when the overlay does. It used to begin on a click in
+  // the row menu, which is a separate overlay now — so this is the same moment,
+  // named by where it happens instead of by which button caused it.
   useEffect(() => {
-    if (!isOverlay) return;
+    void start();
+  }, [start]);
 
-    const root = document.getElementById(VIEWER_ROOT_ID);
-    const html = document.documentElement;
-    const previousOverflow = html.style.overflow;
-
-    html.style.overflow = 'hidden';
-    // One flag for both halves of "modal": the document leaves the tab order
-    // and disappears from the accessibility tree.
-    root?.setAttribute('inert', '');
-    closeRef.current?.focus();
-
-    // The backstop under the Tab trap: focus can also arrive from outside the
-    // dialog, cycling back in from the browser's own chrome.
-    const onFocusIn = (event: FocusEvent) => {
-      const dialog = dialogRef.current;
-      if (!dialog || dialog.contains(event.target as Node)) return;
-      closeRef.current?.focus();
-    };
-    document.addEventListener('focusin', onFocusIn);
-
-    return () => {
-      document.removeEventListener('focusin', onFocusIn);
-      html.style.overflow = previousOverflow;
-      // Before any focus call: focus() inside an inert subtree does nothing.
-      root?.removeAttribute('inert');
-    };
-  }, [isOverlay]);
-
-  /** The menu is a popup, not a modal: focus moves in, but the page stays live. */
+  /**
+   * Everything a modal needs is the host's: `inert` on the document beneath,
+   * the focus trap, focus restore, Escape, the stacking. What used to be here —
+   * an `inert` attribute, a `focusin` backstop, a Tab trap, a `z-index` and a
+   * portal — is deleted rather than reimplemented, which is the entire point of
+   * `openOverlay`. The scroll lock is the one exception and lives in `plugin.ts`
+   * with a note saying why.
+   *
+   * The navigation keys move to the host's registry for a reason beyond tidiness:
+   * `n`/`p`/`j`/`k`/`s` were caught on the dialog and stopped from propagating,
+   * which worked against listeners that bubble and does not against the plugin
+   * host's, which captures. `p` in particular is presentation mode's key.
+   * Bindings are tried newest-first and the first to handle wins, so registering
+   * these while the comparison is up is what actually claims them.
+   */
   useEffect(() => {
-    if (request === null || phase !== 'menu') return;
-
-    itemRef.current?.focus();
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (menuRef.current?.contains(event.target as Node)) return;
-      dismiss();
-    };
-    // A menu that survives the page scrolling out from under it is a menu
-    // floating over the wrong row.
-    const onScroll = () => dismiss();
-
-    document.addEventListener('pointerdown', onPointerDown, true);
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onScroll);
-
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown, true);
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onScroll);
-    };
-  }, [request, phase, dismiss]);
-
-  /* ------------------------------------------------------------------------ */
-  /* Keys                                                                      */
-  /* ------------------------------------------------------------------------ */
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    // The viewer's unmodified shortcuts (t, r, d, /) listen on window, and every
-    // one of them would otherwise fire straight through this.
-    event.stopPropagation();
-
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      dismiss();
-      return;
-    }
-
-    if (event.key === 'Tab' && isOverlay) {
-      trapFocus(event, dialogRef.current);
-      return;
-    }
-
-    if (event.ctrlKey || event.metaKey || event.altKey || !isOverlay) return;
-
-    switch (event.key) {
-      case 'n':
-      case 'j':
-        goto(cursor + 1);
-        break;
-      case 'p':
-      case 'k':
-        goto(cursor - 1);
-        break;
-      case 's':
-        setSwapped((value) => !value);
-        break;
-      default:
-        return;
-    }
-
-    event.preventDefault();
-  };
+    const bindings: Teardown[] = [
+      ctx.shortcuts.add({ key: 'n', whileTyping: true, run: press(() => goto(cursor + 1)) }),
+      ctx.shortcuts.add({ key: 'j', whileTyping: true, run: press(() => goto(cursor + 1)) }),
+      ctx.shortcuts.add({ key: 'p', whileTyping: true, run: press(() => goto(cursor - 1)) }),
+      ctx.shortcuts.add({ key: 'k', whileTyping: true, run: press(() => goto(cursor - 1)) }),
+      ctx.shortcuts.add({
+        key: 's',
+        whileTyping: true,
+        run: press(() => setSwapped((value) => !value)),
+      }),
+    ];
+    return () => bindings.forEach((stop) => stop());
+  }, [ctx, goto, cursor]);
 
   /* ------------------------------------------------------------------------ */
 
   if (!request) return null;
 
-  if (phase === 'menu') {
-    return createPortal(
-      <div
-        ref={menuRef}
-        className="mdv-diff-menu"
-        data-mdv-chrome
-        role="menu"
-        aria-label={`Actions for ${request.name}`}
-        style={menuPosition(request)}
-        onKeyDown={onKeyDown}
-      >
-        <button
-          ref={itemRef}
-          type="button"
-          className="mdv-diff-menu-item"
-          role="menuitem"
-          title={request.path}
-          onClick={() => void start()}
-        >
-          Compare with current file
-        </button>
-      </div>,
-      document.body,
-    );
-  }
-
   const failed = comparison?.failed ?? null;
   const stats: DiffStats | null = comparison?.stats ?? null;
 
-  return createPortal(
+  return (
     <div
       className="mdv-diff"
-      // Read by the print rule below, which strips chrome by attribute rather
-      // than by class name the way viewer.css does inside the shell.
+      // Read by the print rule in diff.css, which strips chrome by attribute
+      // rather than by class name the way viewer.css does inside the shell.
       data-mdv-chrome
-      onKeyDown={onKeyDown}
     >
-      <div
-        ref={dialogRef}
-        className="mdv-diff-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-      >
+      {/* No `role="dialog"` and no `aria-modal`: the host's overlay surface is
+          the dialog and carries both, and nesting a second one inside it would
+          announce two. */}
+      <div className="mdv-diff-dialog" aria-labelledby={titleId}>
         <header className="mdv-diff-bar">
           <h2 className="mdv-diff-title" id={titleId}>
             <span className="mdv-diff-name" data-side="before">
@@ -447,12 +512,11 @@ export function Diff({
             </button>
 
             <button
-              ref={closeRef}
               type="button"
               className="mdv-diff-tool"
               aria-label="Close comparison"
               title="Close (Esc)"
-              onClick={dismiss}
+              onClick={close}
             >
               <CloseIcon />
             </button>
@@ -495,8 +559,7 @@ export function Diff({
           ) : null}
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
 }
 
@@ -729,26 +792,37 @@ function describe(error: unknown): string {
   return text.trim().slice(0, 300) || 'The comparison could not be built.';
 }
 
-function trapFocus(
-  event: ReactKeyboardEvent<HTMLDivElement>,
-  dialog: HTMLElement | null,
-) {
-  if (!dialog) return;
-
-  const nodes = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-    // Rendered, rather than merely present: a control the current state hides
-    // is not somewhere Tab may land.
-    (node) => node.getClientRects().length > 0,
-  );
-  if (nodes.length === 0) return;
-
-  const first = nodes[0];
-  const last = nodes[nodes.length - 1];
-  const active = document.activeElement;
-
-  if (event.shiftKey ? active === first : active === last) {
+/**
+ * A shortcut binding, as this view wants it: never while the reader is typing
+ * into one of the view's own controls, and always claiming the key.
+ *
+ * `whileTyping` is on at the registry so a bare `n` still reaches us from the
+ * scroll container, which is focusable; the field check is restated here because
+ * the comparison has no text fields of its own but the document might.
+ */
+function press(run: () => void) {
+  return (event: KeyboardEvent) => {
+    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    if (isTypingTarget(event.target)) return;
     event.preventDefault();
-    (event.shiftKey ? last : first).focus();
+    run();
+  };
+}
+
+/** Whether a keystroke belongs to whatever the reader is typing into. */
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (typeof HTMLElement === 'undefined' || !(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  return ['input', 'textarea', 'select'].includes(target.tagName.toLowerCase());
+}
+
+/** Last path segment, for naming the document on screen in the header. */
+function documentName(rawUrl: string): string {
+  try {
+    const segments = new URL(rawUrl).pathname.split('/').filter(Boolean);
+    return decodeURIComponent(segments[segments.length - 1] ?? '') || 'this document';
+  } catch {
+    return 'this document';
   }
 }
 

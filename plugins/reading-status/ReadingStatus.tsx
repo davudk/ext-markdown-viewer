@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { readingStats, type ReadingStats } from '@/lib/reading';
+import { useDocument, usePluginSettings } from '../../lib/plugins/react.tsx';
+import { readingStats, type ReadingStats } from '../../lib/reading.ts';
+
+import { unitOf, type ReadingStatusSettings } from './plugin.ts';
 
 import './reading-status.css';
 
@@ -15,34 +18,33 @@ const PROGRESS_VAR = '--mdv-progress';
  * Word count, reading time, and a progress bar for the rendered document.
  *
  * Both halves are chrome layered over a body React does not own, so neither
- * reads the `html` prop: the counts come from one walk of the live
- * `main.mdv-body`, and `html` is only the signal that the walk is stale. That
- * keeps a multi-MB document from being parsed a second time just to be counted.
+ * reads the document's HTML for its content: the counts come from one walk of
+ * the live body element, and `doc.html` is only the signal that the walk is
+ * stale. That keeps a multi-MB document from being parsed a second time just to
+ * be counted.
  *
- * The whole component renders as a single fixed layer with `pointer-events:
- * none`, which is what keeps it out of the shell's flex row — a top-level
- * sibling here would otherwise be granted `flex: 1 1 auto` by viewer.css and
- * become a second column — and what guarantees it can never shift the document
- * by a pixel.
- *
- * Both flags are the shell's to decide. Pass them false in raw mode: the raw
- * view is a different `<main>` element, so the flag flipping is what tells this
- * component to let go of the old one.
+ * The two props this used to take are both gone. `html` and the body element
+ * come from `useDocument()`, which is the one shared answer to "what is on
+ * screen" — no `main.mdv-body` lookup of its own. The `stats` and `progress`
+ * flags were `settings.readingStats && !showRaw` computed by the shell; they are
+ * now this plugin's own settings and `doc.isRaw`, decided here.
  */
-export function ReadingStatus({
-  html,
-  stats,
-  progress,
-}: {
-  /** The rendered document. Read as a change signal, not for its content. */
-  html: string;
-  /** Show the word count and reading time. `settings.readingStats && !showRaw`. */
-  stats: boolean;
-  /** Show the progress bar. `settings.readingProgress && !showRaw`. */
-  progress: boolean;
-}) {
+export function ReadingStatus() {
+  const doc = useDocument();
+  const { showStats, showProgress } = usePluginSettings<ReadingStatusSettings>();
+
+  // The raw view is a different `<main>` holding the source as one `<pre>`.
+  // Counting its words is counting markdown syntax, and a progress bar over it
+  // measures a document that is not the one the estimate describes.
+  const stats = showStats && !doc.isRaw;
+  const progress = showProgress && !doc.isRaw;
+
   const [measured, setMeasured] = useState<ReadingStats | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
+
+  const body = doc.body;
+  /** The document identity: a live reload swaps the HTML, not the element. */
+  const html = doc.html;
 
   /* --- counting ----------------------------------------------------------- */
 
@@ -51,8 +53,6 @@ export function ReadingStatus({
       setMeasured(null);
       return;
     }
-
-    const body = document.querySelector<HTMLElement>('main.mdv-body');
     if (!body) return;
 
     // Deferred rather than run inline: the walk is proportional to the document,
@@ -67,13 +67,12 @@ export function ReadingStatus({
 
     const handle = requestIdleCallback(measure, { timeout: 2000 });
     return () => cancelIdleCallback(handle);
-  }, [html, stats]);
+  }, [html, body, stats]);
 
   /* --- progress ----------------------------------------------------------- */
 
   useEffect(() => {
     const bar = barRef.current;
-    const body = document.querySelector<HTMLElement>('main.mdv-body');
     if (!progress || !bar || !body) return;
 
     let frame = 0;
@@ -130,7 +129,7 @@ export function ReadingStatus({
       window.removeEventListener('resize', onResize);
       observer.disconnect();
     };
-  }, [progress, html]);
+  }, [progress, html, body]);
 
   if (!progress && !stats) return null;
 
@@ -172,18 +171,6 @@ export function ReadingStatus({
       ) : null}
     </div>
   );
-}
-
-/**
- * What the headline number is counting.
- *
- * CJK text is counted per character, so calling the total "words" on a Chinese
- * or Japanese document would be a plain misstatement. The switch is on which
- * kind of unit is in the majority, because a mixed document has to be called
- * something and the majority is the honest choice.
- */
-function unitOf({ words, cjkCharacters }: ReadingStats): string {
-  return cjkCharacters * 2 > words ? 'characters' : 'words';
 }
 
 function Dot() {

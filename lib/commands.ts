@@ -5,8 +5,8 @@
  *
  * Deliberately free of React and of the DOM, so every rule below — which
  * commands exist, how a query is ranked, what a setting row does when it is
- * chosen — is testable in bare node. The one exception is the folder registry
- * at the bottom, which holds a reference and a callback and touches neither.
+ * chosen — is testable in bare node, with no exceptions left: the folder
+ * registry that used to sit at the bottom is a capability now.
  *
  * The other rule this file exists to enforce is the boundary on Fuse.js: it
  * matches *discrete items* — commands, headings, filenames, settings — and it
@@ -500,67 +500,21 @@ export function buildFileItems(
 }
 
 /* -------------------------------------------------------------------------- */
-/* The folder, published rather than passed                                    */
+/* Files, as the palette sees them                                             */
 /* -------------------------------------------------------------------------- */
 
 /**
- * What `FolderBrowser` knows and the palette needs.
+ * What the folder browser knows and the palette needs.
  *
- * This is a module-scoped store rather than a prop, and the reason is the tree
- * it would otherwise have to travel: `FolderBrowser` renders inside `Sidebar`,
- * which renders inside `Viewer`, and the palette is a sibling of `Sidebar`. Its
- * file list, its picker and its permission grant all live behind two components
- * whose only job would be forwarding them. One publisher, one subscriber, and
- * neither `Sidebar` nor `Viewer` learns that the palette exists.
+ * This used to be a module-scope `let`, a set of listeners and a `publishFolder`
+ * function right here — one publisher, one subscriber, and a live handle on a
+ * mounted component held at module scope for the life of the page. The reason
+ * given was the tree it would otherwise travel: the browser renders two
+ * components below the palette's own parent, and neither is ours to edit.
  *
- * Nothing here is persisted and nothing outlives the page: it is a live handle
- * on a component that is currently mounted, which is exactly why it is reset
- * when that component unmounts.
+ * That reason is gone. The plugin host has capabilities, which are exactly this
+ * — published by whoever owns the thing, read by whoever needs it, typed by
+ * declaration merging, and withdrawn when the provider is disabled instead of
+ * lingering. The shape moved to `plugins/files/types.ts` as `files.browser`;
+ * only the item builders below are left here, and they take what they need.
  */
-export interface FolderRegistration {
-  /** False where the File System Access API is missing; removes "Open folder…". */
-  supported: boolean;
-  /** The open folder's name, or null when none is. */
-  rootName: string | null;
-  /** Markdown files in the directories that have been read so far. */
-  files: readonly PaletteFile[];
-  /** Opens the picker. */
-  choose: () => void;
-  /** Opens one of `files`, by its `id`. */
-  open: (id: string) => void;
-}
-
-const NO_FOLDER: FolderRegistration = {
-  supported: false,
-  rootName: null,
-  files: [],
-  choose: () => {},
-  open: () => {},
-};
-
-let folder: FolderRegistration = NO_FOLDER;
-const listeners = new Set<(registration: FolderRegistration) => void>();
-
-export function publishFolder(registration: FolderRegistration | null): void {
-  folder = registration ?? NO_FOLDER;
-  for (const listener of listeners) listener(folder);
-}
-
-export function getFolder(): FolderRegistration {
-  return folder;
-}
-
-export function subscribeFolder(
-  listener: (registration: FolderRegistration) => void,
-): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-/** Test seam: the store is module state, and a test that sets it must undo it. */
-export function resetFolder(): void {
-  folder = NO_FOLDER;
-  listeners.clear();
-}
