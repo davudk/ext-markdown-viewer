@@ -360,6 +360,18 @@ export const GLOBAL_SETTING_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof Setti
  */
 export const FETCH_ALLOWLIST = ['lib/live-reload.ts'];
 
+/**
+ * Modules permitted to construct a `FontFace`, policed the same way.
+ *
+ * A `FontFace` takes a URL and fetches it, so it is a network call wearing a
+ * different name — and unlike `fetch` it does not read as one. The KaTeX add-on
+ * registers the twenty faces the maths fonts need against
+ * `chrome.runtime.getURL`, which is extension-local by construction; the source
+ * is where that can be established, and this list is what makes a *second*
+ * caller appearing anywhere fail the build.
+ */
+export const FONT_FACE_ALLOWLIST = ['entrypoints/katex-addon.ts'];
+
 /** The single chrome.storage.local key settings are stored under. */
 export const SETTINGS_KEY = 'settings';
 

@@ -55,11 +55,13 @@ const INERT_URLS = [
 /**
  * Anything here can open a connection or pull a resource; always a failure.
  *
- * `fetch` is deliberately absent: live reload re-reads the open document's own
- * address, which is a real request and cannot be checked by pattern-matching
- * minified output. It is policed against the *source* tree instead — see
- * `auditFetchCallSites` below — which is stricter, because it fails on a new
- * call site rather than on a string that happens to look like one.
+ * `fetch` and `new FontFace` are deliberately absent, for the same reason. Live
+ * reload re-reads the open document's own address and the KaTeX add-on loads
+ * fonts out of the extension's own package; both are real resource loads, and
+ * neither can be told apart from "phones home" by pattern-matching minified
+ * output — the URL is a variable by then. They are policed against the *source*
+ * tree instead — see `auditCallSites` below — which is stricter, because it
+ * fails on a new call site rather than on a string that happens to look like one.
  */
 const NETWORK_APIS = [
   /\bXMLHttpRequest\b/,
@@ -67,7 +69,6 @@ const NETWORK_APIS = [
   /\bEventSource\b/,
   /sendBeacon/,
   /\bimportScripts\s*\(/,
-  /\bnew\s+FontFace\b/,
 ];
 
 /**
@@ -173,17 +174,20 @@ function stripCommentsAndStrings(source) {
 }
 
 /**
- * Every `fetch` call site in the source, checked against `FETCH_ALLOWLIST` in
- * lib/config.ts. This is the real guard on the network claim: the built bundle
- * cannot distinguish "re-reads the open document" from "phones home", but the
- * source can, and a new call site anywhere fails the build.
+ * Every call site of a resource-fetching API in the source, checked against the
+ * matching allowlist in lib/config.ts. This is the real guard on the network
+ * claim: the built bundle cannot distinguish "re-reads the open document" from
+ * "phones home", but the source can, and a new call site anywhere fails the
+ * build.
  */
-function auditFetchCallSites() {
+function auditCallSites(label, pattern, allowlist) {
   const config = readFileSync('lib/config.ts', 'utf8');
-  const declared = config.match(/^export const FETCH_ALLOWLIST = \[([^\]]*)\];$/m);
+  const declared = config.match(
+    new RegExp(`^export const ${allowlist} = \\[([^\\]]*)\\];$`, 'm'),
+  );
 
   if (!declared) {
-    failures.push('could not read FETCH_ALLOWLIST from lib/config.ts');
+    failures.push(`could not read ${allowlist} from lib/config.ts`);
     return;
   }
 
@@ -200,19 +204,19 @@ function auditFetchCallSites() {
 
   for (const file of sources) {
     const code = stripCommentsAndStrings(readFileSync(file, 'utf8'));
-    const calls = (code.match(/(?<![.\w])fetch\s*\(/g) ?? []).length;
+    const calls = (code.match(pattern) ?? []).length;
     if (calls === 0) continue;
 
     if (allowed.has(file)) {
-      notices.push(`${file}: ${calls} allowlisted fetch call site(s)`);
+      notices.push(`${file}: ${calls} allowlisted ${label} call site(s)`);
     } else {
-      failures.push(`${file}: fetch outside FETCH_ALLOWLIST (${calls} call site(s))`);
+      failures.push(`${file}: ${label} outside ${allowlist} (${calls} call site(s))`);
     }
   }
 
   for (const file of allowed) {
     if (!sources.includes(file)) {
-      failures.push(`FETCH_ALLOWLIST names a file with no fetch left in it: ${file}`);
+      failures.push(`${allowlist} names a file with no ${label} left in it: ${file}`);
     }
   }
 }
@@ -250,7 +254,8 @@ for (const file of walk(OUT)) {
   }
 }
 
-auditFetchCallSites();
+auditCallSites('fetch', /(?<![.\w])fetch\s*\(/g, 'FETCH_ALLOWLIST');
+auditCallSites('new FontFace', /\bnew\s+FontFace\b/g, 'FONT_FACE_ALLOWLIST');
 
 if (notices.length > 0) {
   console.log(`${notices.length} inert URL string(s):`);

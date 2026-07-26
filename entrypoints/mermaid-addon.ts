@@ -331,6 +331,14 @@ function viewer(drawing: SVGSVGElement): HTMLElement {
   // to — presentation mode among them.
   drawing.style.removeProperty('max-width');
 
+  // The stage's shape, from the drawing's own proportions. The stylesheet
+  // turns this into a height and clamps it at both ends — see
+  // `.mdv-mermaid-stage`. Without it the box is whatever `height: auto` makes
+  // of the aspect ratio at the column's width, which for the wide, short
+  // diagrams mermaid most often produces is a letterbox slot a few lines tall.
+  const box = viewBoxOf(drawing);
+  stage.style.setProperty('--mdv-mermaid-aspect', `${box.width} / ${box.height}`);
+
   drawing.append(viewport(drawing));
   stage.append(drawing);
 
@@ -395,6 +403,70 @@ function hitArea(drawing: SVGSVGElement): SVGRectElement {
   return rect;
 }
 
+/** Breathing room around an exported diagram, in the drawing's own units. */
+const MERMAID_EXPORT_PADDING = 8;
+
+/**
+ * The box the drawing actually occupies, rather than the one it declares.
+ *
+ * Mermaid's `viewBox` is generous — it reserves room for the largest label it
+ * measured, and for several diagram types it is a good deal taller and wider
+ * than anything it drew. Exporting against it is where the margin of white
+ * around a downloaded PNG comes from, and cropping to the real geometry is a
+ * better answer than trimming pixels afterwards, because it fixes the SVG
+ * export at the same time.
+ *
+ * Measured as the union of the viewport group's children, skipping the hit
+ * rectangle — which is nine times the size of the diagram on purpose and would
+ * otherwise *be* the answer. `getBBox` reports local user-space coordinates,
+ * untouched by the pan/zoom transform on the group, so what comes out does not
+ * depend on where the reader happened to leave the view.
+ *
+ * Falls back to the declared `viewBox` whenever the measurement is unavailable
+ * or degenerate: a detached or `display:none` element measures as zero, and an
+ * export that silently produced a 0×0 canvas would be worse than a roomy one.
+ */
+function contentBoxOf(drawing: SVGSVGElement) {
+  const group = drawing.querySelector<SVGGElement>(`.${VIEWPORT_CLASS}`);
+  if (!group) return viewBoxOf(drawing);
+
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+
+  for (const child of group.children) {
+    if (child.classList.contains(HIT_CLASS)) continue;
+
+    let box: DOMRect;
+    try {
+      box = (child as SVGGraphicsElement).getBBox();
+    } catch {
+      // Non-rendered children (`<title>`, a stray text node wrapper) throw
+      // rather than measuring; they are also not part of the picture.
+      continue;
+    }
+
+    if (box.width <= 0 && box.height <= 0) continue;
+    left = Math.min(left, box.x);
+    top = Math.min(top, box.y);
+    right = Math.max(right, box.x + box.width);
+    bottom = Math.max(bottom, box.y + box.height);
+  }
+
+  const width = right - left;
+  const height = bottom - top;
+  if (!(width > 0 && height > 0)) return viewBoxOf(drawing);
+
+  const pad = MERMAID_EXPORT_PADDING;
+  return {
+    x: left - pad,
+    y: top - pad,
+    width: width + pad * 2,
+    height: height + pad * 2,
+  };
+}
+
 function viewBoxOf(drawing: SVGSVGElement) {
   const parts = (drawing.getAttribute('viewBox') ?? '')
     .split(/[\s,]+/)
@@ -440,8 +512,8 @@ function activate(figure: HTMLElement, source: HTMLElement): void {
   restoreView(pz, source);
   pz.on('transform', () => rememberView(pz, source));
 
-  addButton(controls, 'Zoom in', ICON_ZOOM_IN, () => scale(pz, stage, group, MERMAID_ZOOM.step));
-  addButton(controls, 'Zoom out', ICON_ZOOM_OUT, () => scale(pz, stage, group, 1 / MERMAID_ZOOM.step));
+  addButton(controls, 'Zoom in', ICON_ZOOM_IN, () => scale(pz, stage, drawing, MERMAID_ZOOM.step));
+  addButton(controls, 'Zoom out', ICON_ZOOM_OUT, () => scale(pz, stage, drawing, 1 / MERMAID_ZOOM.step));
   addButton(controls, 'Reset view', ICON_RESET, () => reset(pz));
   addButton(controls, 'Fullscreen', ICON_FULLSCREEN, () => void toggleFullscreen(figure));
   addButton(controls, 'Download SVG', ICON_SVG, () => exportSvg(figure));
@@ -466,11 +538,11 @@ function activate(figure: HTMLElement, source: HTMLElement): void {
         break;
       case '+':
       case '=':
-        scale(pz, stage, group, MERMAID_ZOOM.step);
+        scale(pz, stage, drawing, MERMAID_ZOOM.step);
         break;
       case '-':
       case '_':
-        scale(pz, stage, group, 1 / MERMAID_ZOOM.step);
+        scale(pz, stage, drawing, 1 / MERMAID_ZOOM.step);
         break;
       case '0':
         reset(pz);
@@ -486,18 +558,25 @@ function activate(figure: HTMLElement, source: HTMLElement): void {
 /**
  * Zoom about the middle of the stage.
  *
- * `zoomTo` wants coordinates relative to its owner — the `<g>` — while the
- * point worth holding still is the centre of the box the reader is looking
- * through, so the two rectangles have to be subtracted.
+ * `zoomTo` wants coordinates relative to pan/zoom's **owner**, which for the
+ * SVG controller is `ownerSVGElement` — the `<svg>` — not the `<g>` the
+ * transform is written to. Measuring against the `<g>` is the bug this replaces,
+ * and it is the kind that looks almost right: the `<g>`'s rectangle *is* the
+ * drawing, so at the default view the two nearly coincide. The moment the
+ * reader pans or zooms, the `<g>` moves and the anchor moves with it, so every
+ * subsequent zoom pulls toward wherever the drawing has drifted rather than
+ * holding the middle of the frame still. Panzoom's own wheel handler measures
+ * against the owner (`getOffsetXY`), which is why wheel zoom always felt right
+ * and the buttons did not.
  */
 function scale(
   pz: PanZoom,
   stage: HTMLElement,
-  group: SVGGElement,
+  drawing: SVGSVGElement,
   factor: number,
 ): void {
   const box = stage.getBoundingClientRect();
-  const owner = group.getBoundingClientRect();
+  const owner = drawing.getBoundingClientRect();
 
   pz.zoomTo(
     box.left + box.width / 2 - owner.left,
@@ -642,7 +721,7 @@ function selfContained(figure: HTMLElement): SVGSVGElement | null {
   if (!live) return null;
 
   const clone = live.cloneNode(true) as SVGSVGElement;
-  const box = viewBoxOf(live);
+  const box = contentBoxOf(live);
 
   clone.setAttribute('xmlns', SVG_NS);
   clone.setAttribute('xmlns:xlink', XLINK_NS);
@@ -861,7 +940,21 @@ const STYLESHEET = `
   overflow: hidden;
 }
 
+/* The stage is sized by the diagram's own proportions, then clamped at both
+   ends. 'height: auto' alone gives the box whatever the aspect ratio makes of
+   the column width, which is a slot a few lines tall for the wide, short
+   diagrams mermaid produces most often — and a full screen of scrolling for a
+   tall flowchart.
+
+   'min-height' is the floor that stops the letterbox; 'max-height' keeps a
+   diagram from taking over the page, and is a share of the viewport rather
+   than a fixed length so it means the same thing on a laptop and a monitor.
+   'aspect-ratio' is only consulted while height is 'auto', which is what lets
+   the fullscreen rules below take over by setting one. */
 .mdv-mermaid-stage {
+  aspect-ratio: var(--mdv-mermaid-aspect, 16 / 9);
+  min-height: 13rem;
+  max-height: 70vh;
   overflow: hidden;
   /* Or the browser claims every drag as a scroll before pan/zoom sees it. */
   touch-action: none;
@@ -870,10 +963,15 @@ const STYLESHEET = `
 
 .mdv-mermaid-stage:active { cursor: grabbing; }
 
+/* Fills the stage and fits inside it. An SVG with a viewBox defaults to
+   'preserveAspectRatio: xMidYMid meet', so a box the clamps made shorter or
+   taller than the drawing letterboxes it centred rather than cropping it —
+   which also means the reader's starting view is the whole diagram, whatever
+   the clamps did. */
 .mdv-mermaid-stage > svg {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   max-width: none;
 }
 
@@ -937,9 +1035,14 @@ const STYLESHEET = `
   border-radius: 0;
 }
 
+/* An explicit height, which suppresses 'aspect-ratio'; 'max-height' has to go
+   with it or a fullscreen diagram would still be capped at 70% of the screen
+   it was just given all of. */
 .mdv-mermaid:fullscreen .mdv-mermaid-stage,
 .mdv-mermaid[data-mdv-mermaid-cover] .mdv-mermaid-stage {
   height: 100%;
+  min-height: 0;
+  max-height: none;
 }
 
 .mdv-mermaid:fullscreen .mdv-mermaid-stage > svg,

@@ -69,6 +69,36 @@ const FONTS_KEY = 'mdvKatexFonts';
 const PROBE_FONTS = ['KaTeX_Main', 'KaTeX_Math', 'KaTeX_Size1'];
 
 /**
+ * Every font file KaTeX ships, by basename.
+ *
+ * The family and the variant are both in the name — `KaTeX_Main-BoldItalic` is
+ * family `KaTeX_Main`, weight 700, style italic — so the table is the list of
+ * files and nothing else, and adding a face is adding a string.
+ */
+const FONT_FILES = [
+  'AMS-Regular',
+  'Caligraphic-Bold',
+  'Caligraphic-Regular',
+  'Fraktur-Bold',
+  'Fraktur-Regular',
+  'Main-Bold',
+  'Main-BoldItalic',
+  'Main-Italic',
+  'Main-Regular',
+  'Math-BoldItalic',
+  'Math-Italic',
+  'SansSerif-Bold',
+  'SansSerif-Italic',
+  'SansSerif-Regular',
+  'Script-Regular',
+  'Size1-Regular',
+  'Size2-Regular',
+  'Size3-Regular',
+  'Size4-Regular',
+  'Typewriter-Regular',
+] as const;
+
+/**
  * What a rendered formula is allowed to be.
  *
  * KaTeX writes both halves of every formula — the `<math>` tree screen readers
@@ -119,6 +149,7 @@ export default defineUnlistedScript(() => {
   if (html.dataset[INSTALLED_KEY]) return;
   html.dataset[INSTALLED_KEY] = 'on';
 
+  installFonts();
   void checkFonts();
   watch(root);
 });
@@ -244,9 +275,51 @@ function watch(root: HTMLElement): void {
 /* -------------------------------------------------------------------------- */
 
 /**
- * `document.fonts.load` resolves against the faces declared by the stylesheet
- * we just injected, and those name extension-local files — this asks the
- * browser to open `chrome-extension://…/fonts/…`, never the network.
+ * Registers KaTeX's faces against absolute extension URLs.
+ *
+ * The theme stylesheet declares them already, with `url(../fonts/…)` — and a
+ * relative URL is only as good as the base it is resolved against. That
+ * stylesheet arrives through `chrome.scripting.insertCSS`, which is to say it
+ * is applied to a document whose own address is some .md file on the web, and a
+ * relative reference out of it is not reliably rooted at the extension. When it
+ * is not, all twenty faces fail to fetch, `document.fonts.check` says so, and
+ * the warning below fires while every formula silently renders in Times.
+ *
+ * `chrome.runtime.getURL` has no such ambiguity: it returns the absolute
+ * `chrome-extension://<id>/fonts/…` address, which is the file the manifest
+ * lists in `web_accessible_resources` and which resolves the same from any
+ * page. Registering here is additive — a face already loaded by the stylesheet
+ * is simply satisfied twice, and the browser does not fetch it again.
+ *
+ * Never a network request: every URL is extension-local by construction.
+ */
+function installFonts(): void {
+  // `FontFace` and `document.fonts` are both old enough not to need a guard in
+  // Chrome; the try is for `getURL`, which is absent if this ever runs anywhere
+  // but an extension context — in which case the stylesheet's own faces stand.
+  try {
+    for (const file of FONT_FILES) {
+      const [family, variant = 'Regular'] = file.split('-');
+      const face = new FontFace(
+        `KaTeX_${family}`,
+        `url(${chrome.runtime.getURL(`fonts/KaTeX_${file}.woff2`)}) format("woff2")`,
+        {
+          weight: variant.startsWith('Bold') ? '700' : '400',
+          style: variant.endsWith('Italic') ? 'italic' : 'normal',
+          display: 'swap',
+        },
+      );
+      document.fonts.add(face);
+    }
+  } catch {
+    // A face that will not construct costs its own typeface and nothing else.
+  }
+}
+
+/**
+ * `document.fonts.load` resolves against the faces registered above and those
+ * declared by the stylesheet — both name extension-local files, so this asks
+ * the browser to open `chrome-extension://…/fonts/…`, never the network.
  */
 async function checkFonts(): Promise<void> {
   const fonts = document.fonts;
