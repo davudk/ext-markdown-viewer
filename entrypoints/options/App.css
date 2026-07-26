@@ -75,9 +75,199 @@ body {
 }
 
 .page {
-  max-width: 720px;
+  max-width: 1120px;
   margin: 0 auto;
   padding: 40px 24px 72px;
+}
+
+/* Two columns -------------------------------------------------------------- */
+
+/* Contents on the left, settings on the right. `align-items: start` is what
+   lets the nav be sticky at all — a stretched grid item is as tall as the row
+   and has nothing to stick within. */
+.shell {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
+}
+
+.rail {
+  position: sticky;
+  top: 24px;
+  /* Its own scrollbar, so a nav taller than the window is still reachable
+     without scrolling the settings out from under it. */
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+.content {
+  min-width: 0;
+}
+
+/* A group of plugin cards, under one heading. */
+.group + .group {
+  margin-top: 36px;
+}
+
+.group-head {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+}
+
+.group-note {
+  margin: 3px 0 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.group .card:first-of-type {
+  margin-top: 0;
+}
+
+/* The first card of a group follows the heading, not another card. */
+.group-note + .card {
+  margin-top: 0;
+}
+
+/* Table of contents --------------------------------------------------------- */
+
+.toc {
+  font-size: 13px;
+}
+
+.toc-head {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.toc-list + .toc-head,
+.toc-list + .toc-group {
+  margin-top: 18px;
+}
+
+.toc-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toc-group {
+  display: block;
+  margin: 16px 0 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--fg);
+}
+
+.toc-group-note {
+  display: block;
+  margin-top: 1px;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.toc-link {
+  display: block;
+  padding: 5px 10px;
+  border-radius: 7px;
+  /* A rail on the left of every entry, transparent until the entry is current.
+     Drawn always rather than added on activation, so nothing shifts sideways as
+     the highlight moves down the list. */
+  border-left: 2px solid transparent;
+  color: var(--muted);
+  text-decoration: none;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.toc-link:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.toc-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.toc-link[aria-current='true'] {
+  border-left-color: var(--accent);
+  background: var(--surface);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.toc-empty {
+  margin: 10px 0 0;
+  padding: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* `FilterBox` is a viewer component and draws itself from --mdv-* tokens, which
+   only exist on a rendered document. Mapping them onto this page's palette here
+   is what lets the same component be reused rather than reimplemented — and it
+   is a mapping, so both themes follow for free. */
+.toc-filter {
+  --mdv-bg: var(--card);
+  --mdv-surface: var(--surface);
+  --mdv-fg: var(--fg);
+  --mdv-fg-muted: var(--muted);
+  --mdv-border: var(--line-strong);
+  --mdv-accent: var(--accent);
+  --mdv-radius-sm: 7px;
+
+  margin-bottom: 4px;
+}
+
+.toc-filter .mdv-filter {
+  margin: 0;
+  padding: 3px 7px;
+}
+
+.toc-filter .mdv-filter-field {
+  font-size: 13px;
+}
+
+/* Colophon ------------------------------------------------------------------ */
+
+.colophon {
+  margin-top: 28px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.colophon-name {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* A card the contents jumped to. The offset keeps a heading clear of the top of
+   the window on a fragment navigation as well as on a click. */
+.card {
+  scroll-margin-top: 24px;
+}
+
+.card:focus {
+  outline: none;
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* Masthead ----------------------------------------------------------------- */
@@ -930,7 +1120,38 @@ code {
 
 /* Narrow windows ----------------------------------------------------------- */
 
+/* One column. The contents keeps its place at the top rather than being hidden
+   behind a control: it is still the fastest way to reach a section, and a
+   sticky rail with nothing beside it would just be a rail covering the page. */
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+
+  .rail {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  /* Two or three columns of entries, so thirty-seven links do not push the
+     first setting a screen and a half down the page. */
+  .toc-list {
+    columns: 2;
+    column-gap: 16px;
+  }
+
+  .toc-list li {
+    break-inside: avoid;
+  }
+}
+
 @media (max-width: 560px) {
+  .toc-list {
+    columns: 1;
+  }
+
   .page {
     padding: 24px 16px 48px;
   }

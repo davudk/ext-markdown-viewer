@@ -48,7 +48,26 @@ import {
   type DocumentTheme,
 } from '../../lib/theme-presets.ts';
 
-type ThemeSettings = Pick<Settings, 'theme' | 'themePreset' | 'customCss'>;
+/**
+ * The global settings this plugin owns.
+ *
+ * Owning is not storing, and here the difference is load-bearing. The values
+ * stay in `lib/config.ts`'s `Settings` because `entrypoints/renderer.tsx` reads
+ * them before this plugin exists — see the first-paint note above — and because
+ * the command palette toggles `theme` through `ctx.global`. What moves is where
+ * they are *configured*: the options page reads this array and renders those
+ * rows inside this plugin's own section instead of a general one.
+ *
+ * See `TYPOGRAPHY_GLOBALS` for why this is an export rather than a field on
+ * `Plugin`.
+ */
+export const THEME_GLOBALS = [
+  'theme',
+  'themePreset',
+  'customCss',
+] as const satisfies readonly (keyof Settings)[];
+
+type ThemeSettings = Pick<Settings, (typeof THEME_GLOBALS)[number]>;
 
 /**
  * Same layering as the typography plugin, and for the same reason: `ctx.global`
@@ -61,7 +80,7 @@ export function resolveThemeSettings(
 ): ThemeSettings {
   const out = { ...DEFAULT_SETTINGS, ...stored } as Settings;
 
-  for (const key of ['theme', 'themePreset', 'customCss'] as const) {
+  for (const key of THEME_GLOBALS) {
     const override = globals[key];
     if (typeof override === 'string') {
       (out as unknown as Record<string, unknown>)[key] = override;

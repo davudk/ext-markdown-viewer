@@ -44,12 +44,32 @@ import {
 import { PLUGIN_API_VERSION, type Plugin } from '../../lib/plugins/types.ts';
 import { loadSettings, onSettingsChanged } from '../../lib/settings.ts';
 
-type Typography = Pick<
-  Settings,
-  'fontFamily' | 'fontSize' | 'lineHeight' | 'contentWidth'
->;
+/**
+ * The global settings this plugin owns.
+ *
+ * Owning is not the same as storing. The values stay in `lib/config.ts`'s
+ * `Settings` — see the note above on why typography is a global — but *who
+ * configures them* is this plugin, and this array is the statement of that. The
+ * options page reads it to decide which rows belong in this plugin's section
+ * rather than under a heading of its own, and `entrypoints/options/owned.ts`
+ * fails to compile if a key in `Settings` is claimed by nobody.
+ *
+ * There is no `ownedGlobals` field on `Plugin` to declare it through: that
+ * would be a change to `lib/plugins/types.ts`, which is worth doing the next
+ * time a third plugin needs one and is not worth widening the public API for
+ * two. Until then this export is the declaration, and it lives with the plugin,
+ * which is the part that matters.
+ */
+export const TYPOGRAPHY_GLOBALS = [
+  'fontFamily',
+  'fontSize',
+  'lineHeight',
+  'contentWidth',
+] as const satisfies readonly (keyof Settings)[];
 
-const KEYS = ['fontFamily', 'fontSize', 'lineHeight', 'contentWidth'] as const;
+type Typography = Pick<Settings, (typeof TYPOGRAPHY_GLOBALS)[number]>;
+
+const KEYS = TYPOGRAPHY_GLOBALS;
 
 /** Layered: schema defaults, the viewer's settings, then the host's globals. */
 export function resolveTypography(

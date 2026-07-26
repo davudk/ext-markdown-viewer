@@ -1,27 +1,15 @@
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type ChangeEvent,
+  type ReactNode,
 } from 'react';
 
 // Straight from config rather than through settings.ts, which re-exports only
 // the theme surface. These are static tables, not behaviour — see config.ts.
-import {
-  CUSTOM_CSS_MAX_LENGTH,
-  DOCUMENT_THEME_LIMIT,
-  CONTENT_WIDTH_CH,
-  CONTENT_WIDTH_OPTIONS,
-  FONT_FAMILY_OPTIONS,
-  FONT_SIZE_RANGE,
-  FONT_STACKS,
-  LINE_HEIGHT_RANGE,
-  THEME_TOKENS,
-  VIEWER_CSS_VARS,
-} from '@/lib/config';
+import { DOCUMENT_THEME_LIMIT } from '@/lib/config';
 import { sendMessage, type SyncResult } from '@/lib/messages';
 import { readPluginFailures, type PluginFailures } from '@/lib/plugin-failures';
 import {
@@ -34,12 +22,9 @@ import {
   clearDocumentTheme,
   getPreset,
   listDocumentThemes,
-  PRESET_OPTIONS,
   resolvePolarity,
-  sanitizeCustomCss,
   type DocumentTheme,
   type DocumentThemeEntry,
-  type ThemePalette,
   type ThemePresetId,
 } from '@/lib/theme-presets';
 import {
@@ -60,20 +45,19 @@ import {
   type Settings,
   type Theme,
 } from '@/lib/settings';
-import {
-  Message,
-  Segmented,
-  Skeleton,
-  Slider,
-  Switch,
-  Unavailable,
-  type Notice,
-} from './controls';
+import { Message, Skeleton, Switch, Unavailable, type Notice } from './controls';
 import { PluginSection } from './PluginSection';
+import { ThemePanel } from './ThemePanel';
+import { TypographyPanel, type Reading } from './TypographyPanel';
+import { Toc } from './Toc';
+import {
+  ALL_SECTION_IDS,
+  PLUGIN_GROUPS,
+  pluginSectionId,
+} from './sections';
 import {
   emptySettings,
   onPluginSettingsChanged,
-  PLUGINS,
   readPluginSettings,
   withEnabled,
   withSetting,
@@ -105,20 +89,22 @@ type State =
   | { kind: 'unavailable' }
   | { kind: 'ready'; access: Access };
 
-/** Which section a message belongs under, so it lands next to its control. */
-type Section = 'rendering' | 'files' | 'sites' | 'general' | 'pins' | 'backup';
-
 /**
- * The global settings this page owns outright.
+ * Which section a message belongs under, so it lands next to its control.
  *
- * Typography describes the document rather than any one feature, so it is not
- * a plugin's to declare — every generated section below comes from a plugin's
- * own schema, and these have no plugin to come from.
+ * `theme` and `typography` are the plugins that own those settings rather than
+ * the old page-wide `general`: a notice about the reader's stylesheet now
+ * appears inside the theme plugin's card, where the control that produced it
+ * is.
  */
-type Reading = Pick<
-  Settings,
-  'fontFamily' | 'fontSize' | 'lineHeight' | 'contentWidth'
->;
+type Section =
+  | 'rendering'
+  | 'files'
+  | 'sites'
+  | 'pins'
+  | 'backup'
+  | 'theme'
+  | 'typography';
 
 function pickReading(settings: Settings): Reading {
   return {
@@ -130,17 +116,6 @@ function pickReading(settings: Settings): Reading {
 }
 
 const READING_DEFAULTS: Reading = pickReading(DEFAULT_SETTINGS);
-
-/**
- * Every token of a palette as inline custom properties, so the preview below is
- * drawn by the same variables a real document is — not by a hand-built
- * approximation that could agree with the palette one week and not the next.
- */
-function paletteVars(palette: ThemePalette): CSSProperties {
-  const vars: Record<string, string> = {};
-  for (const token of THEME_TOKENS) vars[`--mdv-${token}`] = palette[token];
-  return vars as CSSProperties;
-}
 
 /** `example.com/docs/notes.md`, or the whole thing if it will not parse. */
 function documentLabel(key: string): string {
@@ -173,35 +148,6 @@ function describePin(override: DocumentTheme): string {
  * Only the write waits — the number on screen and the preview never do.
  */
 const WRITE_DELAY_MS = 150;
-
-/** `1.65` on its own reads as nothing in a screen reader; this says what it is. */
-function lineHeightText(value: number): string {
-  return `${value.toFixed(2)} times the font size`;
-}
-
-/**
- * The step is 0.05, and repeated float addition drifts (1.7000000000000002),
- * which would leak into both the label and storage. Two decimals is the most
- * the range can express.
- */
-function roundLineHeight(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-/**
- * The same four custom properties `Viewer.tsx` writes on the document shell.
- * Duplicated rather than shared because the two live in different bundles and
- * the mapping is one line each; VIEWER_CSS_VARS is the part that must not
- * drift, and that is imported.
- */
-function previewVars(reading: Reading): CSSProperties {
-  return {
-    [VIEWER_CSS_VARS.fontFamily]: FONT_STACKS[reading.fontFamily],
-    [VIEWER_CSS_VARS.fontSize]: `${reading.fontSize}px`,
-    [VIEWER_CSS_VARS.lineHeight]: String(reading.lineHeight),
-    [VIEWER_CSS_VARS.contentWidth]: CONTENT_WIDTH_CH[reading.contentWidth],
-  } as CSSProperties;
-}
 
 /** At most one operation at a time, and the UI needs to know which. */
 type Busy =
@@ -421,7 +367,7 @@ function App() {
   }, []);
 
   /**
-   * Apply a reading setting. The screen updates synchronously in every case;
+   * Apply a typography setting. The screen updates synchronously in every case;
    * `defer` only delays the storage write, and is used by the sliders, which
    * fire an event for every pixel of a drag.
    *
@@ -481,7 +427,7 @@ function App() {
 
   const resetReading = () => {
     applyReading(READING_DEFAULTS);
-    say('general', 'ok', 'Typography is back to its defaults.');
+    say('typography', 'ok', 'Typography is back to its defaults.');
   };
 
   // A queued write is lost if the page goes away first, and an options page is
@@ -864,23 +810,41 @@ function App() {
 
   /** The half of the preset the reader would actually be shown right now. */
   const polarity = resolvePolarity(theme, prefersDark);
-  const palette = getPreset(preset)[polarity];
 
   /**
-   * What would happen to the stylesheet if it were applied as typed. Recomputed
-   * on every keystroke rather than on save, because the whole point is to say
-   * what was dropped while there is still something to do about it.
+   * The rows a plugin owns but does not store, keyed by plugin id.
+   *
+   * The only place the page says which plugin a global belongs to, and it says
+   * it once — `owned.ts` holds the declaration, `PluginSection` renders
+   * whatever it is handed, and every other section is generated exactly as
+   * before.
    */
-  const cssReport = useMemo(() => sanitizeCustomCss(customCss), [customCss]);
-  const removedUrls = cssReport.removals.filter(
-    (removal) => removal.kind === 'remote-url',
-  ).length;
-  const removedImports = cssReport.removals.filter(
-    (removal) => removal.kind === 'import',
-  ).length;
-  const removedMarkup = cssReport.removals.filter(
-    (removal) => removal.kind === 'markup',
-  ).length;
+  const ownedPanels: Record<string, ReactNode> = {
+    theme: (
+      <ThemePanel
+        theme={theme}
+        preset={preset}
+        customCss={customCss}
+        polarity={polarity}
+        notice={noticeFor('theme')}
+        onTheme={chooseTheme}
+        onPreset={choosePreset}
+        onCustomCss={applyCustomCss}
+        onClearCss={() => {
+          applyCustomCss('');
+          say('theme', 'ok', 'Your stylesheet is empty again.');
+        }}
+      />
+    ),
+    typography: (
+      <TypographyPanel
+        reading={reading}
+        notice={noticeFor('typography')}
+        onChange={applyReading}
+        onReset={resetReading}
+      />
+    ),
+  };
 
   return (
     <div className="page">
@@ -892,717 +856,16 @@ function App() {
         </div>
       </header>
 
-      <main>
-        {/* Rendering ---------------------------------------------------- */}
-        <section className="card" aria-labelledby="rendering-h">
-          <div className="card-head">
-            <h2 id="rendering-h">Rendering</h2>
-          </div>
+      <div className="shell">
+        <div className="rail">
+          <Toc sectionIds={ALL_SECTION_IDS} />
 
-          <div className="row">
-            <div className="row-text">
-              <h3 className="row-title" id="auto-label">
-                Render markdown automatically on every site
-              </h3>
-              <div className="row-desc" id="auto-desc">
-                <p>
-                  Markdown files render the moment they open, anywhere, without
-                  clicking the toolbar icon.
-                </p>
-                <p>
-                  Chrome will ask you to allow this extension to read and change
-                  your data on all sites, and that is what it grants. There is no
-                  narrower way to do it: Chrome gives extensions no way to
-                  register a handler for a file type, so replacing a page the
-                  browser has already decided to show as plain text means being
-                  allowed to run on that page. The extension only injects into
-                  addresses ending in <code>.md</code>, <code>.markdown</code>,{' '}
-                  <code>.mkd</code> or <code>.mdx</code>, and you can turn this
-                  off here at any time.
-                </p>
-                {ready && !ready.autoRender && (
-                  <p>
-                    Left off, you can still render any file from the toolbar
-                    icon, or allow individual sites one at a time.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {state.kind === 'loading' && (
-              <span className="pill" role="status" aria-label="Checking permissions">
-                Checking…
-              </span>
-            )}
-            {ready && (
-              <Switch
-                on={ready.autoRender}
-                busy={busy?.kind === 'auto'}
-                disabled={locked}
-                labelledBy="auto-label"
-                describedBy="auto-desc"
-                onChange={toggleAutoRender}
-              />
-            )}
-          </div>
-
-          {state.kind === 'unavailable' && (
-            <div className="row">
-              <Unavailable />
-            </div>
-          )}
-
-          <div className="row row-quiet">
-            <Message notice={noticeFor('rendering')} />
-          </div>
-        </section>
-
-        {/* Local files -------------------------------------------------- */}
-        <section className="card" aria-labelledby="files-h">
-          <div className="card-head">
-            <h2 id="files-h">Local files</h2>
-          </div>
-
-          <div className="row row-stack">
-            {state.kind === 'loading' && (
-              <Skeleton label="Checking local file access" />
-            )}
-
-            {state.kind === 'unavailable' && <Unavailable />}
-
-            {ready?.fileAccess && (
-              <>
-                <h3 className="row-title row-title-ok">
-                  <CheckIcon />
-                  Local files are allowed
-                </h3>
-                <p className="row-desc">
-                  Markdown files you open from your computer render on their own.
-                  Chrome shows this as <strong>Allow access to file URLs</strong>{' '}
-                  on the extension's details page, and it can be turned back off
-                  there.
-                </p>
-              </>
-            )}
-
-            {ready && !ready.fileAccess && (
-              <>
-                <h3 className="row-title">Local files are not allowed</h3>
-                <p className="row-desc">
-                  Chrome keeps <code>file:///</code> addresses off-limits to
-                  extensions until you allow it. This one is a browser setting
-                  rather than a permission, so the extension cannot ask for it —
-                  Chrome does not accept <code>file:///*</code> through a
-                  permission prompt. Only you can turn it on:
-                </p>
-                <ol className="steps">
-                  <li>
-                    Paste this into the address bar (Chrome blocks links to it):
-                    <span className="path">
-                      <code>{detailsUrl}</code>
-                      <button
-                        type="button"
-                        className="btn btn-icon"
-                        onClick={() => void copyDetailsUrl()}
-                      >
-                        <CopyIcon />
-                        {copied ? 'Copied' : 'Copy'}
-                      </button>
-                    </span>
-                  </li>
-                  <li>
-                    Turn on <strong>Allow access to file URLs</strong>.
-                  </li>
-                  <li>Come back here and check again.</li>
-                </ol>
-              </>
-            )}
-
-            {ready && (
-              <div className="actions">
-                <button
-                  type="button"
-                  className="btn btn-quiet"
-                  disabled={locked}
-                  onClick={() => void recheckFileAccess()}
-                >
-                  {busy?.kind === 'file' ? 'Checking…' : 'Check again'}
-                </button>
-              </div>
-            )}
-
-            <Message notice={noticeFor('files')} />
-          </div>
-        </section>
-
-        {/* Sites -------------------------------------------------------- */}
-        <section className="card" aria-labelledby="sites-h">
-          <div className="card-head">
-            <h2 id="sites-h">Sites</h2>
-          </div>
-
-          <div className="row row-stack">
-            <p className="row-desc">
-              Every site you have allowed individually. This is the whole list —
-              nothing renders automatically on a site that isn't here, unless the
-              switch above is on.
-            </p>
-
-            {state.kind === 'loading' && <Skeleton label="Loading allowed sites" />}
-
-            {state.kind === 'unavailable' && <Unavailable />}
-
-            {ready?.autoRender && ready.sites.length > 0 && (
-              <p className="note">
-                Automatic rendering already covers every site, so these grants
-                add nothing while it stays on. They take over again if you turn
-                it off.
-              </p>
-            )}
-
-            {ready && ready.sites.length === 0 && (
-              <p className="empty">
-                No sites yet. Open a markdown file, click the extension's toolbar
-                icon and choose <strong>Always render on this site</strong> to
-                add one.
-              </p>
-            )}
-
-            {ready && ready.sites.length > 0 && (
-              <ul className="sites">
-                {ready.sites.map((origin) => {
-                  const label = originLabel(origin);
-                  const removing =
-                    busy?.kind === 'site' && busy.origin === origin;
-                  return (
-                    <li key={origin} className="site">
-                      <span className="site-name">{label}</span>
-                      <button
-                        type="button"
-                        className="btn btn-quiet btn-inline"
-                        aria-label={`Remove access to ${label}`}
-                        disabled={locked}
-                        onClick={() => handleRevoke(origin)}
-                      >
-                        {removing ? 'Removing…' : 'Remove'}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-
-            <Message notice={noticeFor('sites')} />
-          </div>
-        </section>
-
-        {/* General ------------------------------------------------------ */}
-        {/* Theme, palette, typography and the stylesheet describe the
-            document itself rather than any one feature, so they belong to no
-            plugin and cannot be generated from a schema. Everything that does
-            belong to a plugin is below, generated. */}
-        <section className="card" aria-labelledby="general-h">
-          <div className="card-head">
-            <h2 id="general-h">General</h2>
-          </div>
-
-          <div className="row">
-            <div className="row-text">
-              <h3 className="row-title" id="theme-label">
-                Theme
-              </h3>
-              <p className="row-desc">
-                Applies to rendered documents, the popup and this page.{' '}
-                <strong>Auto</strong> follows your system setting; light and dark
-                override it in both directions.
-              </p>
-            </div>
-
-            <Segmented
-              name="theme"
-              value={theme}
-              options={THEME_OPTIONS}
-              labelledBy="theme-label"
-              onChange={chooseTheme}
-            />
-          </div>
-
-          <div className="row row-stack">
-            <div className="row-text">
-              <h3 className="row-title" id="preset-label">
-                Colour preset
-              </h3>
-              <div className="row-desc" id="preset-desc">
-                <p>
-                  Which palette rendered documents are drawn from. This is a
-                  separate choice from <strong>Theme</strong> above and does not
-                  override it: every preset comes in a light and a dark half, and
-                  the setting above still decides which half you get — including{' '}
-                  <strong>Auto</strong>, which keeps following your system.
-                </p>
-                <p>
-                  Every preset meets the WCAG AA contrast minimum for body text,
-                  muted text, links and syntax highlighting, measured against the
-                  surface each one is actually painted on.{' '}
-                  <strong>High contrast</strong> meets the stricter AAA level
-                  throughout.
-                </p>
-              </div>
-            </div>
-
-            <div
-              className="presets"
-              role="radiogroup"
-              aria-labelledby="preset-label"
-              aria-describedby="preset-desc"
-            >
-              {PRESET_OPTIONS.map(({ value, label, note, swatch }) => (
-                <label
-                  key={value}
-                  className={value === preset ? 'preset is-on' : 'preset'}
-                >
-                  <input
-                    type="radio"
-                    name="theme-preset"
-                    value={value}
-                    checked={value === preset}
-                    onChange={() => choosePreset(value)}
-                  />
-                  <span className="preset-body">
-                    {/* The half that is actually in use, so the chips are the
-                        colours this reader would get rather than an average of
-                        two palettes they will only ever see one of. */}
-                    <span className="preset-swatch" aria-hidden="true">
-                      {swatch[polarity].map((colour, index) => (
-                        <span key={index} style={{ background: colour }} />
-                      ))}
-                    </span>
-                    <span className="preset-text">
-                      <span className="preset-name">{label}</span>
-                      <span className="preset-note">{note}</span>
-                    </span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div className="row row-stack">
-            <h3 className="row-title" id="palette-label">
-              Preview
-            </h3>
-            {/* Drawn from the preset's own custom properties, the same ones the
-                viewer's stylesheet reads — so this is the palette itself, not a
-                drawing of it that could drift. */}
-            <div
-              className="palette"
-              style={paletteVars(palette)}
-              role="group"
-              aria-labelledby="palette-label"
-            >
-              <p className="palette-title">Notes on the estuary</p>
-              <p className="palette-body">
-                The tide runs out twice a day and leaves the whole channel bare.{' '}
-                <a href="#preset-label">A link</a>, some{' '}
-                <code className="palette-code">inline code</code>, and a line of{' '}
-                <span className="palette-muted">quieter text beneath it</span>.
-              </p>
-              <pre className="palette-pre">
-                <span className="tk-comment">// syntax colours are part of the preset</span>
-                {'\n'}
-                <span className="tk-keyword">export function</span>{' '}
-                <span className="tk-title">tide</span>(
-                <span className="tk-punct">hours</span>){' '}
-                {'{'}
-                {'\n  '}
-                <span className="tk-keyword">return</span>{' '}
-                <span className="tk-string">'ebb'</span>,{' '}
-                <span className="tk-number">2</span>;{'\n'}
-                {'}'}
-              </pre>
-            </div>
-          </div>
-
-          <div className="row">
-            <div className="row-text">
-              <h3 className="row-title" id="font-label">
-                Font
-              </h3>
-              <p className="row-desc">
-                Fonts already on this computer. The extension never downloads
-                one, so nothing here reaches the network.
-              </p>
-            </div>
-
-            <Segmented
-              name="font-family"
-              value={reading.fontFamily}
-              options={FONT_FAMILY_OPTIONS}
-              labelledBy="font-label"
-              onChange={(value) => applyReading({ fontFamily: value })}
-            />
-          </div>
-
-          <div className="row">
-            <div className="row-text">
-              <h3 className="row-title" id="font-size-label">
-                Font size
-              </h3>
-              <p className="row-desc">
-                The base size for body text. Headings, code and captions are
-                sized in proportion to it, so they all move together.
-              </p>
-            </div>
-
-            <Slider
-              id="font-size"
-              value={reading.fontSize}
-              display={`${reading.fontSize}px`}
-              valueText={`${reading.fontSize} pixels`}
-              range={FONT_SIZE_RANGE}
-              // Deferred: a drag fires this on every pixel of travel.
-              onChange={(next) => applyReading({ fontSize: next }, true)}
-            />
-          </div>
-
-          <div className="row">
-            <div className="row-text">
-              <h3 className="row-title" id="line-height-label">
-                Line height
-              </h3>
-              <p className="row-desc">
-                Space between lines, as a multiple of the font size. More helps
-                on long paragraphs; less fits more on screen.
-              </p>
-            </div>
-
-            <Slider
-              id="line-height"
-              value={reading.lineHeight}
-              display={reading.lineHeight.toFixed(2)}
-              valueText={lineHeightText(reading.lineHeight)}
-              range={LINE_HEIGHT_RANGE}
-              onChange={(next) =>
-                applyReading({ lineHeight: roundLineHeight(next) }, true)
-              }
-            />
-          </div>
-
-          <div className="row">
-            <div className="row-text">
-              <h3 className="row-title" id="content-width-label">
-                Content width
-              </h3>
-              <p className="row-desc">
-                How wide a line of text is allowed to get. Measured in
-                characters rather than pixels, so it stays the same length of
-                line whatever font size you pick. <strong>Full</strong> removes
-                the limit.
-              </p>
-            </div>
-
-            <Segmented
-              name="content-width"
-              value={reading.contentWidth}
-              options={CONTENT_WIDTH_OPTIONS}
-              labelledBy="content-width-label"
-              onChange={(value) => applyReading({ contentWidth: value })}
-            />
-          </div>
-
-          <div className="row row-stack">
-            <h3 className="row-title" id="preview-label">
-              Preview
-            </h3>
-            {/* Rendered from the same four custom properties as a real
-                document, so this is the actual result rather than an
-                impression of it. */}
-            <div
-              className="preview"
-              style={previewVars(reading)}
-              role="group"
-              aria-labelledby="preview-label"
-            >
-              <p className="preview-title">Notes on the estuary</p>
-              <p>
-                The tide runs out twice a day and leaves the whole channel bare,
-                a flat grey mile of it, stitched with the tracks of birds that
-                got there first.
-              </p>
-              <p>
-                Everything worth reading is somewhere in the middle of a long
-                paragraph, which is why a sample of one line tells you nothing
-                about whether a setting is comfortable to read.
-              </p>
-            </div>
-
-            <div className="actions">
-              <button
-                type="button"
-                className="btn btn-quiet"
-                onClick={resetReading}
-              >
-                Reset typography to defaults
-              </button>
-            </div>
-          </div>
-
-          <div className="row row-stack">
-            <label className="row-title" htmlFor="custom-css">
-              CSS applied to rendered documents
-            </label>
-            <div className="row-desc" id="custom-css-desc">
-              <p>
-                Applied on top of the theme, to the document itself and nothing
-                else. Selectors are relative to the document body, so{' '}
-                <code>h1</code> means a heading in the file — the viewer's own
-                sidebar and toolbar, the popup and this page are all out of
-                reach, by construction rather than by convention.
-              </p>
-              <p>
-                Two things are removed before it is applied, and you are told
-                when they are: <code>@import</code>, and any <code>url()</code>{' '}
-                that is not a <code>data:</code> one. Both would make the viewer
-                request something over the network, and it never requests
-                anything.
-              </p>
-            </div>
-
-            <textarea
-              id="custom-css"
-              className="editor"
-              value={customCss}
-              spellCheck={false}
-              rows={8}
-              maxLength={CUSTOM_CSS_MAX_LENGTH}
-              aria-describedby="custom-css-desc custom-css-report"
-              placeholder={'blockquote {\n  font-style: italic;\n}'}
-              onChange={(event) => applyCustomCss(event.target.value)}
-            />
-
-            <p className="editor-count">
-              {customCss.length.toLocaleString()} of{' '}
-              {CUSTOM_CSS_MAX_LENGTH.toLocaleString()} characters
-            </p>
-
-            {/* Always in the DOM so a change is announced, and phrased as what
-                happened rather than as a warning — the reader wrote this. */}
-            <p
-              id="custom-css-report"
-              className={
-                cssReport.error
-                  ? 'msg is-err'
-                  : cssReport.removals.length > 0 || cssReport.truncated
-                    ? 'msg is-info'
-                    : 'msg'
-              }
-              role="status"
-              aria-live="polite"
-            >
-              {cssReport.error ??
-                [
-                  removedImports > 0 &&
-                    `${removedImports} @import ${removedImports === 1 ? 'rule was' : 'rules were'} removed.`,
-                  removedUrls > 0 &&
-                    `${removedUrls} url() ${removedUrls === 1 ? 'reference was' : 'references were'} removed for pointing somewhere other than a data: URI.`,
-                  removedMarkup > 0 && 'A `</` sequence was removed.',
-                  cssReport.truncated && 'The text was cut at the size limit.',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-            </p>
-
-            <div className="actions">
-              <button
-                type="button"
-                className="btn btn-quiet"
-                disabled={customCss === ''}
-                onClick={() => {
-                  applyCustomCss('');
-                  say('general', 'ok', 'Your stylesheet is empty again.');
-                }}
-              >
-                Remove my stylesheet
-              </button>
-            </div>
-
-            <Message notice={noticeFor('general')} />
-          </div>
-        </section>
-
-        {/* Features ----------------------------------------------------- */}
-        {/* Everything below is generated from `PLUGINS`. There is no list of
-            features here to fall out of step with the registry — a plugin that
-            exists gets a section, and the controls in it are exactly the
-            settings it declares. */}
-        <section className="card" aria-labelledby="features-h">
-          <div className="card-head">
-            <h2 id="features-h">Features</h2>
-          </div>
-
-          <div className="row row-stack">
-            <p className="row-desc">
-              Every part of the viewer is a feature that can be switched off, and
-              switching one off removes it completely rather than hiding it. The
-              markdown ones change how a document is parsed, so they take effect
-              the next time it is rendered.
-            </p>
-          </div>
-        </section>
-
-        {PLUGINS.map((plugin) => (
-          <PluginSection
-            key={plugin.id}
-            plugin={plugin}
-            stored={plugins}
-            failure={failures[plugin.id]}
-            onToggle={(enabled) =>
-              applyPlugins(withEnabled(plugins, plugin.id, enabled))
-            }
-            onSetting={(key, value, defer) =>
-              applyPlugins(withSetting(plugins, plugin.id, key, value), defer)
-            }
-          />
-        ))}
-
-        {/* Pinned documents --------------------------------------------- */}
-        <section className="card" aria-labelledby="pins-h">
-          <div className="card-head">
-            <h2 id="pins-h">Pinned documents</h2>
-          </div>
-
-          <div className="row row-stack">
-            <p className="row-desc">
-              Documents you have given a theme of their own from the viewer.
-              Each one ignores the settings above until it is unpinned. The last{' '}
-              {DOCUMENT_THEME_LIMIT} are kept; beyond that the least recently
-              opened is forgotten.
-            </p>
-
-            {pins === null && <Skeleton label="Loading pinned documents" />}
-
-            {pins?.length === 0 && (
-              <p className="empty">
-                Nothing is pinned. Every document follows the theme and preset
-                above.
-              </p>
-            )}
-
-            {pins && pins.length > 0 && (
-              <ul className="sites">
-                {pins.map((entry) => {
-                  const label = documentLabel(entry.key);
-                  const removing = busy?.kind === 'pin' && busy.key === entry.key;
-                  return (
-                    <li key={entry.key} className="site">
-                      <span className="site-name" title={entry.key}>
-                        {label}
-                      </span>
-                      <span className="pin-what">{describePin(entry.override)}</span>
-                      <button
-                        type="button"
-                        className="btn btn-quiet btn-inline"
-                        aria-label={`Unpin ${label}`}
-                        disabled={locked}
-                        onClick={() => unpin(entry.key)}
-                      >
-                        {removing ? 'Unpinning…' : 'Unpin'}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-
-            {pins && pins.length > 0 && (
-              <div className="actions">
-                <button
-                  type="button"
-                  className="btn btn-quiet"
-                  disabled={locked}
-                  onClick={unpinAll}
-                >
-                  {busy?.kind === 'pins' ? 'Unpinning…' : 'Unpin all'}
-                </button>
-              </div>
-            )}
-
-            <Message notice={noticeFor('pins')} />
-          </div>
-        </section>
-
-        {/* Backup ------------------------------------------------------- */}
-        <section className="card" aria-labelledby="backup-h">
-          <div className="card-head">
-            <h2 id="backup-h">Backup</h2>
-          </div>
-
-          <div className="row row-stack">
-            <h3 className="row-title">Save your settings to a file</h3>
-            <p className="row-desc">
-              A single JSON file holding every setting on this page, written
-              straight to your downloads folder. It goes nowhere else — there is
-              no account and no sync. Site permissions, scroll positions and
-              pinned documents are not in it; the first is Chrome's to grant and
-              the other two describe this computer rather than your preferences.
-            </p>
-
-            <div className="actions">
-              <button
-                type="button"
-                className="btn btn-quiet"
-                disabled={locked}
-                onClick={handleExport}
-              >
-                {busy?.kind === 'export' ? 'Saving…' : 'Export settings'}
-              </button>
-            </div>
-          </div>
-
-          <div className="row row-stack">
-            <label className="row-title" htmlFor="settings-file">
-              Load settings from a file
-            </label>
-            <p className="row-desc" id="settings-file-desc">
-              Every field is checked against what this version understands before
-              anything is written: values out of range are brought back into it,
-              values of the wrong kind are left alone, and anything that is not a
-              setting is ignored. A file this version cannot read changes nothing
-              at all, and says why.
-            </p>
-
-            <input
-              id="settings-file"
-              className="file"
-              type="file"
-              accept="application/json,.json"
-              aria-describedby="settings-file-desc"
-              disabled={locked}
-              onChange={(event) => void handleImport(event)}
-            />
-
-            <Message notice={noticeFor('backup')} />
-
-            {imported?.ok && imported.notes.length > 0 && (
-              <ul className="notes">
-                {imported.notes.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
-
-        {/* About -------------------------------------------------------- */}
-        <section className="card" aria-labelledby="about-h">
-          <div className="card-head">
-            <h2 id="about-h">About</h2>
-          </div>
-
-          <div className="row row-stack">
-            <h3 className="row-title">
+          {/* Provenance rather than a setting, so it sits under the contents
+              instead of taking a place in it. */}
+          <footer className="colophon">
+            <p className="colophon-name">
               {app.name} <span className="version">version {app.version}</span>
-            </h3>
+            </p>
             <ul className="facts">
               <li>The extension makes no network requests.</li>
               <li>There is no analytics, telemetry, or crash reporting.</li>
@@ -1612,9 +875,398 @@ function App() {
                 <code>chrome.storage.local</code>, and are never synced.
               </li>
             </ul>
-          </div>
-        </section>
-      </main>
+          </footer>
+        </div>
+
+        <main className="content">
+          {/* Rendering ---------------------------------------------------- */}
+          <section
+            className="card"
+            id="sec-rendering"
+            aria-labelledby="rendering-h"
+            tabIndex={-1}
+          >
+            <div className="card-head">
+              <h2 id="rendering-h">Rendering</h2>
+            </div>
+
+            <div className="row">
+              <div className="row-text">
+                <h3 className="row-title" id="auto-label">
+                  Render markdown automatically on every site
+                </h3>
+                <div className="row-desc" id="auto-desc">
+                  <p>
+                    Markdown files render the moment they open, anywhere, without
+                    clicking the toolbar icon.
+                  </p>
+                  <p>
+                    Chrome will ask you to allow this extension to read and change
+                    your data on all sites, and that is what it grants. There is no
+                    narrower way to do it: Chrome gives extensions no way to
+                    register a handler for a file type, so replacing a page the
+                    browser has already decided to show as plain text means being
+                    allowed to run on that page. The extension only injects into
+                    addresses ending in <code>.md</code>, <code>.markdown</code>,{' '}
+                    <code>.mkd</code> or <code>.mdx</code>, and you can turn this
+                    off here at any time.
+                  </p>
+                  {ready && !ready.autoRender && (
+                    <p>
+                      Left off, you can still render any file from the toolbar
+                      icon, or allow individual sites one at a time.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {state.kind === 'loading' && (
+                <span className="pill" role="status" aria-label="Checking permissions">
+                  Checking…
+                </span>
+              )}
+              {ready && (
+                <Switch
+                  on={ready.autoRender}
+                  busy={busy?.kind === 'auto'}
+                  disabled={locked}
+                  labelledBy="auto-label"
+                  describedBy="auto-desc"
+                  onChange={toggleAutoRender}
+                />
+              )}
+            </div>
+
+            {state.kind === 'unavailable' && (
+              <div className="row">
+                <Unavailable />
+              </div>
+            )}
+
+            <div className="row row-quiet">
+              <Message notice={noticeFor('rendering')} />
+            </div>
+          </section>
+
+          {/* Local files -------------------------------------------------- */}
+          <section
+            className="card"
+            id="sec-files"
+            aria-labelledby="files-h"
+            tabIndex={-1}
+          >
+            <div className="card-head">
+              <h2 id="files-h">Local files</h2>
+            </div>
+
+            <div className="row row-stack">
+              {state.kind === 'loading' && (
+                <Skeleton label="Checking local file access" />
+              )}
+
+              {state.kind === 'unavailable' && <Unavailable />}
+
+              {ready?.fileAccess && (
+                <>
+                  <h3 className="row-title row-title-ok">
+                    <CheckIcon />
+                    Local files are allowed
+                  </h3>
+                  <p className="row-desc">
+                    Markdown files you open from your computer render on their own.
+                    Chrome shows this as <strong>Allow access to file URLs</strong>{' '}
+                    on the extension's details page, and it can be turned back off
+                    there.
+                  </p>
+                </>
+              )}
+
+              {ready && !ready.fileAccess && (
+                <>
+                  <h3 className="row-title">Local files are not allowed</h3>
+                  <p className="row-desc">
+                    Chrome keeps <code>file:///</code> addresses off-limits to
+                    extensions until you allow it. This one is a browser setting
+                    rather than a permission, so the extension cannot ask for it —
+                    Chrome does not accept <code>file:///*</code> through a
+                    permission prompt. Only you can turn it on:
+                  </p>
+                  <ol className="steps">
+                    <li>
+                      Paste this into the address bar (Chrome blocks links to it):
+                      <span className="path">
+                        <code>{detailsUrl}</code>
+                        <button
+                          type="button"
+                          className="btn btn-icon"
+                          onClick={() => void copyDetailsUrl()}
+                        >
+                          <CopyIcon />
+                          {copied ? 'Copied' : 'Copy'}
+                        </button>
+                      </span>
+                    </li>
+                    <li>
+                      Turn on <strong>Allow access to file URLs</strong>.
+                    </li>
+                    <li>Come back here and check again.</li>
+                  </ol>
+                </>
+              )}
+
+              {ready && (
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    disabled={locked}
+                    onClick={() => void recheckFileAccess()}
+                  >
+                    {busy?.kind === 'file' ? 'Checking…' : 'Check again'}
+                  </button>
+                </div>
+              )}
+
+              <Message notice={noticeFor('files')} />
+            </div>
+          </section>
+
+          {/* Sites -------------------------------------------------------- */}
+          <section
+            className="card"
+            id="sec-sites"
+            aria-labelledby="sites-h"
+            tabIndex={-1}
+          >
+            <div className="card-head">
+              <h2 id="sites-h">Sites</h2>
+            </div>
+
+            <div className="row row-stack">
+              <p className="row-desc">
+                Every site you have allowed individually. This is the whole list —
+                nothing renders automatically on a site that isn't here, unless the
+                switch above is on.
+              </p>
+
+              {state.kind === 'loading' && <Skeleton label="Loading allowed sites" />}
+
+              {state.kind === 'unavailable' && <Unavailable />}
+
+              {ready?.autoRender && ready.sites.length > 0 && (
+                <p className="note">
+                  Automatic rendering already covers every site, so these grants
+                  add nothing while it stays on. They take over again if you turn
+                  it off.
+                </p>
+              )}
+
+              {ready && ready.sites.length === 0 && (
+                <p className="empty">
+                  No sites yet. Open a markdown file, click the extension's toolbar
+                  icon and choose <strong>Always render on this site</strong> to
+                  add one.
+                </p>
+              )}
+
+              {ready && ready.sites.length > 0 && (
+                <ul className="sites">
+                  {ready.sites.map((origin) => {
+                    const label = originLabel(origin);
+                    const removing =
+                      busy?.kind === 'site' && busy.origin === origin;
+                    return (
+                      <li key={origin} className="site">
+                        <span className="site-name">{label}</span>
+                        <button
+                          type="button"
+                          className="btn btn-quiet btn-inline"
+                          aria-label={`Remove access to ${label}`}
+                          disabled={locked}
+                          onClick={() => handleRevoke(origin)}
+                        >
+                          {removing ? 'Removing…' : 'Remove'}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              <Message notice={noticeFor('sites')} />
+            </div>
+          </section>
+
+          {/* Pinned documents --------------------------------------------- */}
+          <section
+            className="card"
+            id="sec-pins"
+            aria-labelledby="pins-h"
+            tabIndex={-1}
+          >
+            <div className="card-head">
+              <h2 id="pins-h">Pinned documents</h2>
+            </div>
+
+            <div className="row row-stack">
+              <p className="row-desc">
+                Documents you have given a theme of their own from the viewer.
+                Each one ignores the global theme until it is unpinned. The last{' '}
+                {DOCUMENT_THEME_LIMIT} are kept; beyond that the least recently
+                opened is forgotten.
+              </p>
+
+              {pins === null && <Skeleton label="Loading pinned documents" />}
+
+              {pins?.length === 0 && (
+                <p className="empty">
+                  Nothing is pinned. Every document follows the theme and preset
+                  set under the Theme plugin.
+                </p>
+              )}
+
+              {pins && pins.length > 0 && (
+                <ul className="sites">
+                  {pins.map((entry) => {
+                    const label = documentLabel(entry.key);
+                    const removing = busy?.kind === 'pin' && busy.key === entry.key;
+                    return (
+                      <li key={entry.key} className="site">
+                        <span className="site-name" title={entry.key}>
+                          {label}
+                        </span>
+                        <span className="pin-what">{describePin(entry.override)}</span>
+                        <button
+                          type="button"
+                          className="btn btn-quiet btn-inline"
+                          aria-label={`Unpin ${label}`}
+                          disabled={locked}
+                          onClick={() => unpin(entry.key)}
+                        >
+                          {removing ? 'Unpinning…' : 'Unpin'}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {pins && pins.length > 0 && (
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    disabled={locked}
+                    onClick={unpinAll}
+                  >
+                    {busy?.kind === 'pins' ? 'Unpinning…' : 'Unpin all'}
+                  </button>
+                </div>
+              )}
+
+              <Message notice={noticeFor('pins')} />
+            </div>
+          </section>
+
+          {/* Backup ------------------------------------------------------- */}
+          <section
+            className="card"
+            id="sec-backup"
+            aria-labelledby="backup-h"
+            tabIndex={-1}
+          >
+            <div className="card-head">
+              <h2 id="backup-h">Backup</h2>
+            </div>
+
+            <div className="row row-stack">
+              <h3 className="row-title">Save your settings to a file</h3>
+              <p className="row-desc">
+                A single JSON file holding every setting on this page, written
+                straight to your downloads folder. It goes nowhere else — there is
+                no account and no sync. Site permissions, scroll positions and
+                pinned documents are not in it; the first is Chrome's to grant and
+                the other two describe this computer rather than your preferences.
+              </p>
+
+              <div className="actions">
+                <button
+                  type="button"
+                  className="btn btn-quiet"
+                  disabled={locked}
+                  onClick={handleExport}
+                >
+                  {busy?.kind === 'export' ? 'Saving…' : 'Export settings'}
+                </button>
+              </div>
+            </div>
+
+            <div className="row row-stack">
+              <label className="row-title" htmlFor="settings-file">
+                Load settings from a file
+              </label>
+              <p className="row-desc" id="settings-file-desc">
+                Every field is checked against what this version understands before
+                anything is written: values out of range are brought back into it,
+                values of the wrong kind are left alone, and anything that is not a
+                setting is ignored. A file this version cannot read changes nothing
+                at all, and says why.
+              </p>
+
+              <input
+                id="settings-file"
+                className="file"
+                type="file"
+                accept="application/json,.json"
+                aria-describedby="settings-file-desc"
+                disabled={locked}
+                onChange={(event) => void handleImport(event)}
+              />
+
+              <Message notice={noticeFor('backup')} />
+
+              {imported?.ok && imported.notes.length > 0 && (
+                <ul className="notes">
+                  {imported.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+
+          {/* Plugins ------------------------------------------------------ */}
+          {/* Everything below is generated from `PLUGINS`, in the groups the
+              contents lists them under, so nav order and page order are the
+              same list read twice. There is no list of features here to fall
+              out of step with the registry — a plugin that exists gets a
+              section, and the controls in it are exactly the settings it
+              declares, plus any global it owns. */}
+          {PLUGIN_GROUPS.map((group) => (
+            <div className="group" key={group.name}>
+              <h2 className="group-head">{group.name}</h2>
+              <p className="group-note">{group.note}</p>
+
+              {group.plugins.map((plugin) => (
+                <PluginSection
+                  key={plugin.id}
+                  plugin={plugin}
+                  sectionId={pluginSectionId(plugin.id)}
+                  stored={plugins}
+                  failure={failures[plugin.id]}
+                  owned={ownedPanels[plugin.id]}
+                  onToggle={(enabled) =>
+                    applyPlugins(withEnabled(plugins, plugin.id, enabled))
+                  }
+                  onSetting={(key, value, defer) =>
+                    applyPlugins(withSetting(plugins, plugin.id, key, value), defer)
+                  }
+                />
+              ))}
+            </div>
+          ))}
+        </main>
+      </div>
     </div>
   );
 }

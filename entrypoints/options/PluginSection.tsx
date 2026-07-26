@@ -7,6 +7,8 @@
  * to edit — which is the whole reason the schema exists.
  */
 
+import type { ReactNode } from 'react';
+
 import { Message, Row, Segmented, Select, Slider, Switch } from './controls';
 import { isPluginEnabled, settingEntries, type AnyPlugin, type SettingEntry, type StoredSettings } from './plugins';
 
@@ -163,15 +165,26 @@ function PluginSetting({
 
 export function PluginSection({
   plugin,
+  sectionId,
   stored,
   failure,
+  owned,
   onToggle,
   onSetting,
 }: {
   plugin: AnyPlugin;
+  /** The element id the table of contents links to and the scroll-spy watches. */
+  sectionId: string;
   stored: StoredSettings;
   /** Why the host disabled it last time it ran, if it did. */
   failure?: string;
+  /**
+   * Rows for the global settings this plugin owns but does not store — see
+   * `owned.ts`. They render here, below the switch and above nothing, because
+   * a plugin's settings belong in the plugin's section whatever key they
+   * happen to live under.
+   */
+  owned?: ReactNode;
   onToggle: (enabled: boolean) => void;
   onSetting: SettingChange;
 }) {
@@ -180,7 +193,14 @@ export function PluginSection({
   const headingId = `plugin-${plugin.id}-h`;
 
   return (
-    <section className="card" aria-labelledby={headingId}>
+    <section
+      className="card"
+      id={sectionId}
+      aria-labelledby={headingId}
+      // Focused when the contents jumps here, so the next Tab continues from
+      // the section the reader landed on rather than the top of the nav.
+      tabIndex={-1}
+    >
       <div className="card-head">
         <h2 id={headingId}>{plugin.name}</h2>
       </div>
@@ -226,6 +246,8 @@ export function PluginSection({
           change={onSetting}
         />
       ))}
+
+      {owned}
     </section>
   );
 }

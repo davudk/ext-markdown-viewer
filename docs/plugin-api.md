@@ -203,6 +203,29 @@ same act with more ceremony.
 Stored values are coerced against the schema on read: out of range clamps,
 wrong type falls back to the default. A settings file is user-supplied input.
 
+### Owning a global
+
+A global is shared storage, but it is still *configured* somewhere, and that
+somewhere should be the plugin whose behaviour it describes — a theme setting
+three cards away from the Theme plugin is the coupling the plugin split exists
+to remove. A plugin that owns globals says so by exporting the keys next to the
+code that applies them:
+
+```ts
+export const THEME_GLOBALS = ['theme', 'themePreset', 'customCss'] as const
+  satisfies readonly (keyof Settings)[];
+```
+
+The options page reads those exports (`entrypoints/options/owned.ts`) and
+renders the rows inside that plugin's section, and fails to compile if a key in
+`Settings` is claimed by nobody. Ownership does not move the value: the seven
+globals stay in `lib/config.ts` because `entrypoints/renderer.tsx` resolves the
+theme before any plugin exists, and must keep doing so on every path — including
+the ones where the theme plugin is disabled or threw.
+
+There is no `ownedGlobals` field on `Plugin` yet. Two plugins is not enough to
+widen the API for; add one when a third needs it.
+
 ## Talking to other plugins
 
 Never import another plugin. Use capabilities, which are typed by declaration
