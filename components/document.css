@@ -48,21 +48,13 @@
 }
 
 /* ==========================================================================
-   2. Toolbar
+   2. Toolbar buttons
 
-   Fixed rather than in flow: the shell may or may not put a sidebar beside the
-   document, and a fixed corner is the one position that is correct either way.
-   Muted until approached, so it reads as chrome and not as content.
+   No positioning: these sit in a corner the shell lays out (`.mdv-corner` in
+   viewer.css), because contributed chrome shares that corner and only the shell
+   can see everything in it. Muted until approached, so they read as chrome and
+   not as content.
    ========================================================================== */
-
-.mdv-toolbar {
-  position: fixed;
-  top: 0.6rem;
-  right: 0.6rem;
-  z-index: 20;
-  display: flex;
-  gap: 0.35rem;
-}
 
 .mdv-tool {
   font: inherit;
@@ -84,7 +76,7 @@
     background-color var(--mdv-dur) ease, border-color var(--mdv-dur) ease;
 }
 
-.mdv-toolbar:hover .mdv-tool,
+.mdv-corner:hover .mdv-tool,
 .mdv-tool:focus,
 .mdv-tool[aria-pressed='true'] {
   opacity: 1;
@@ -303,7 +295,7 @@
 
 /* The printed page is the document alone. */
 @media print {
-  .mdv-toolbar,
+  .mdv-corner,
   .mdv-body .mdv-copy,
   .mdv-body .mdv-anchor {
     display: none;

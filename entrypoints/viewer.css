@@ -192,6 +192,68 @@ body {
   flex: 1 1 auto;
 }
 
+/* The document track. A *column*: `.mdv` is a row of exactly two tracks — the
+   aside and this — and everything else stacks in here. Before this existed,
+   every region was a direct child of the row, so anything contributed in flow
+   (the frontmatter card, the export menu) was laid out beside the document
+   instead of above it. */
+.mdv-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Contributions that sit in flow, sharing the document's measure so a card
+   above the body reads as the top of the document and not as a band across the
+   page. Collapsed when its region is empty — `<Region>` renders nothing at all
+   in that case, so `:empty` is exact. */
+.mdv-flow {
+  width: 100%;
+  max-width: var(--mdv-measure, 72ch);
+  margin-inline: auto;
+  padding-inline: clamp(1.15rem, 5vw, 2rem);
+}
+
+.mdv-flow:empty {
+  display: none;
+}
+
+/* The block above the body owns the document's top gap, so the card starts
+   where the first heading otherwise would rather than below a band of space. */
+.mdv-flow:not(:empty) {
+  padding-top: clamp(2rem, 6vw, 3.75rem);
+}
+
+.mdv-flow:not(:empty) + .mdv-doc .mdv-body {
+  padding-top: 0;
+}
+
+/* The two top corners, laid out by the shell because two plugins can want the
+   same one and only the shell can see both. Zero-sized when empty, so an
+   unfilled corner intercepts nothing. */
+.mdv-corner {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.mdv-corner-top-start {
+  top: 0.6rem;
+  left: 0.6rem;
+}
+
+.mdv-corner-top-end {
+  top: 0.6rem;
+  right: 0.6rem;
+}
+
+/* Clear of the sidebar, which occupies the leading edge when it is open. */
+.mdv-with-toc .mdv-corner-top-start {
+  left: calc(var(--mdv-toc-width) + 0.6rem);
+}
+
 /* Its own track, so it can never sit on top of the document. Sticky rather
    than fixed: fixed would escape the flex row and re-introduce the overlap. */
 .mdv-with-toc > nav {
@@ -215,6 +277,12 @@ body {
     position: static;
     max-height: none;
     border-bottom: 1px solid var(--mdv-border);
+  }
+
+  /* The sidebar is above the document now, not beside it, so the leading
+     corner has nothing to clear. */
+  .mdv-with-toc .mdv-corner-top-start {
+    left: 0.6rem;
   }
 }
 

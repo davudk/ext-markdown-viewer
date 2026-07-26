@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 import { useKeyboardShortcuts } from '@/lib/hooks';
 import { renderMarkdown, setMarkdownHost } from '@/lib/markdown';
@@ -52,12 +52,37 @@ export function Viewer({
   const source = opened?.source ?? pageSource;
   const url = opened?.url ?? location.href;
 
-  const doc = useMemo(() => renderMarkdown(source), [source]);
+  /**
+   * The pipeline asks the host for its parser extensions. Without this the
+   * viewer still renders and still sanitizes, but as bare CommonMark — a
+   * visible symptom rather than a silent one.
+   *
+   * Installed during the *first render*, not from an effect. `doc` below is
+   * memoized on the source, and the source does not change on mount: a host
+   * installed after the first render would arrive one render too late and the
+   * document would keep its bare-CommonMark HTML for the life of the page. The
+   * frontmatter block is the visible tell — the card renders from the source,
+   * while the block itself is still sitting in the body because the strip rule
+   * was not installed when the body was parsed.
+   */
+  useState(() => setMarkdownHost(plugins));
+  useEffect(() => {
+    setMarkdownHost(plugins);
+    return () => setMarkdownHost(null);
+  }, [plugins]);
 
-  // The pipeline asks the host for its parser extensions. Without this the
-  // viewer still renders and still sanitizes, but as bare CommonMark — a
-  // visible symptom rather than a silent one.
-  useEffect(() => setMarkdownHost(plugins), [plugins]);
+  /**
+   * Bumps whenever a plugin is enabled or disabled. In the dependency list of
+   * the parse below because enabling a *parser* plugin changes the HTML, and
+   * the source has not changed — without this, toggling frontmatter or math off
+   * in settings would rebuild the parser and then never use it.
+   */
+  const pluginRevision = useSyncExternalStore(
+    plugins.status.subscribe,
+    () => plugins.status.get(),
+  );
+
+  const doc = useMemo(() => renderMarkdown(source), [source, pluginRevision]);
 
   useShellRegions(plugins);
 
@@ -110,25 +135,100 @@ export function Viewer({
       {/* `mdv-with-toc` is added by whatever fills `shell.aside`: only the
           column itself knows whether it is there. */}
       <div className="mdv">
-        {/* Core regions: named for where they are, never for what fills them. */}
+        {/* Core regions: named for where they are, never for what fills them.
+
+            `.mdv` is a flex *row* of exactly two tracks — the aside and
+            everything else. Every other region lives inside `.mdv-main`, which
+            stacks, so a contribution that sits in flow lands above or below the
+            document rather than beside it. */}
         <Region name="shell.aside" />
-        <Region name="chrome.top-start" />
-        <Region name="chrome.top-end" />
-        <Region name="document.before" />
 
-        <Document
-          html={doc.html}
-          source={source}
-          showRaw={showRaw}
-          onToggleRaw={() => setShowRaw((raw) => !raw)}
-        />
+        <div className="mdv-main">
+          {/* The two top corners are laid out by the shell, because two
+              plugins can want the same corner and only the shell can see both.
+              The bottom corners are not: their occupants are full-width or
+              self-positioned layers, and the plugins that fill them say so. */}
+          <div className="mdv-corner mdv-corner-top-start" data-mdv-chrome>
+            <Region name="chrome.top-start" />
+          </div>
+          <div className="mdv-corner mdv-corner-top-end" data-mdv-chrome>
+            <Region name="chrome.top-end" />
+            <RawToggle
+              showRaw={showRaw}
+              onToggle={() => setShowRaw((raw) => !raw)}
+            />
+          </div>
 
-        <Region name="document.after" />
-        <Region name="chrome.bottom-start" />
-        <Region name="chrome.bottom-end" />
+          {/* In flow, above the body and sharing its measure, so a card here
+              reads as the top of the document rather than as a second column.
+              Empty when nothing is contributed — see `.mdv-flow:empty`. */}
+          <div className="mdv-flow">
+            <Region name="document.before" />
+          </div>
+
+          <Document html={doc.html} source={source} showRaw={showRaw} />
+
+          <div className="mdv-flow">
+            <Region name="document.after" />
+          </div>
+
+          <Region name="chrome.bottom-start" />
+          <Region name="chrome.bottom-end" />
+        </div>
+
         <OverlayLayer />
       </div>
     </PluginProvider>
+  );
+}
+
+/**
+ * The raw/rendered switch.
+ *
+ * Shell chrome, not a plugin: the raw view is the fallback for everything the
+ * viewer might get wrong, so it is the one control that must survive every
+ * plugin being disabled. It carries no positioning of its own — the corner it
+ * sits in is laid out by the shell.
+ */
+function RawToggle({
+  showRaw,
+  onToggle,
+}: {
+  showRaw: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="mdv-tool"
+      aria-pressed={showRaw}
+      aria-label={showRaw ? 'Show rendered document' : 'Show raw markdown'}
+      onClick={onToggle}
+    >
+      <svg
+        className="mdv-icon"
+        viewBox="0 0 16 16"
+        width="13"
+        height="13"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        focusable="false"
+      >
+        {showRaw ? (
+          <path d="M3 3.4h10M3 6.6h10M3 9.8h7M3 13h5" />
+        ) : (
+          <>
+            <path d="M5.6 4.8 2.4 8l3.2 3.2" />
+            <path d="M10.4 4.8 13.6 8l-3.2 3.2" />
+          </>
+        )}
+      </svg>
+      Raw
+    </button>
   );
 }
 

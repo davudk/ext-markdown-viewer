@@ -37,6 +37,12 @@ If 0.1 fails, stop — everything below depends on it.
 
 - [ ] **1.1** The document is centred with comfortable line length, not full-bleed.
 - [ ] **1.2** Nothing scrolls sideways. The wide table scrolls *inside itself*.
+- [ ] **1.2a** Nothing sits *beside* the document. Contributed chrome is either
+      in a fixed corner or stacked above/below the text — never a second column.
+      This regressed once: the shell was a flex row, so the export menu and the
+      frontmatter card were laid out next to the article.
+- [ ] **1.2b** The **Raw** button and the **Export** menu share the top-right
+      corner, side by side, and neither overlaps the other or the scrollbar.
 - [ ] **1.3** `r` toggles the raw view; the source appears as plain text.
 - [ ] **1.4** `r` again returns to the rendered view, at the same place.
 - [ ] **1.5** Print preview (⌘P) shows the document with no toolbars, sidebar,
@@ -76,8 +82,14 @@ These are nine plugins, but they read as one thing, so test them together.
 
 - [ ] **3.1** A card appears above the title showing title, author, date, and
       tags as chips.
+- [ ] **3.1a** The card is **in the document column** — its left and right edges
+      line up with the body text, and it sits above the `# Manual Test Document`
+      heading rather than beside it.
 - [ ] **3.2** The `---` block itself is **not** visible as a horizontal rule or
-      a stray table.
+      a stray table. Specifically: the words `every-feature` and `nested` must
+      appear only in the card, never in the body. Seeing the metadata twice —
+      once as a card, once as document text — means the parser was built before
+      the plugins were installed.
 - [ ] **3.3** The card collapses and expands.
 - [ ] **3.4** Settings → Frontmatter → `display: raw` shows the block as text;
       `hidden` shows nothing. **In both cases the document below is unchanged** —
