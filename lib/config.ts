@@ -522,6 +522,9 @@ export interface ThemePreset {
  */
 export const THEME_PRESET_IDS = [
   'default',
+  'warm-paper',
+  'cool-ink',
+  'editorial',
   'solarized',
   'nord',
   'gruvbox',
