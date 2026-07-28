@@ -9,8 +9,8 @@
    in 22px serif is a worse command list.
 
    Selectors are a class heavier than they need to be, for the same reason as
-   search.css — this file and viewer.css reach the page by different routes, so
-   nothing here may depend on winning a tie. */
+   every plugin stylesheet — this file and viewer.css reach the page by
+   different routes, so nothing here may depend on winning a tie. */
 
 /* ==========================================================================
    1. Layer and scrim
@@ -20,8 +20,8 @@
    which is what keeps `.mdv > :not(nav) { flex: 1 1 auto }` in viewer.css from
    stretching this into a second column beside the document.
 
-   Above the search panel's z-index (30), because the palette is modal and the
-   search panel is not.
+   High in the z ladder because the palette is modal: everything non-modal —
+   the quick-find card among them — must sit beneath it.
    ========================================================================== */
 
 .mdv-palette-layer {

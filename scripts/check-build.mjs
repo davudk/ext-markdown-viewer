@@ -82,6 +82,17 @@ for (const file of walk(OUT)) {
   );
 }
 
+// Source stylesheets @import the design tokens and rely on the build inlining
+// them. An @import that survives to the output would fail silently at runtime:
+// insertCSS injects the text as-is, and the imported file would simply never
+// load. (audit-network catches *remote* imports; this catches local ones.)
+for (const file of walk(OUT)) {
+  if (!file.endsWith('.css')) continue;
+  if (/@import\b/.test(readFileSync(file, 'utf8'))) {
+    problems.push(`@import survived the build in ${file.slice(OUT.length + 1)}`);
+  }
+}
+
 /**
  * Chromium refuses any extension file that fails `base::IsStringUTF8`, which
  * rejects surrogates and Unicode noncharacters as well as malformed bytes. The

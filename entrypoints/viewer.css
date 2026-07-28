@@ -3,6 +3,11 @@
    resolves to a literal "light" or "dark" before paint. No media queries for
    color, no webfonts, no external references of any kind. */
 
+/* The design system's value scales — spacing, type, radius, z, opacity,
+   motion, elevation. Inlined at build time, so the emitted stylesheet stays a
+   single self-contained file; check-build verifies no @import survives. */
+@import '../design/tokens.css';
+
 /* ==========================================================================
    1. Theme tokens
    ========================================================================== */
@@ -105,8 +110,10 @@
   --mdv-dur: 120ms;
 
   /* Sidebar track width. Only the outer box is set here; the components that
-     live inside the sidebar own everything within it. */
-  --mdv-toc-width: clamp(12.5rem, 17vw, 17rem);
+     live inside the sidebar own everything within it. Declared once — the
+     sidebar reads it too, and a second definition over there once let the
+     shell's corner offset and the sidebar's real edge disagree. */
+  --mdv-toc-width: clamp(12.5rem, 20vw, 17rem);
 }
 
 /* ==========================================================================

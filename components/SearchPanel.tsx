@@ -143,7 +143,7 @@ function headingElementFor(headings: readonly Heading[], breadcrumb: string[]): 
  *
  * Within a single text node only. A match that straddles one — the `word` in
  * `**wo**rd` — is given up on rather than reassembled, because the reassembly
- * needs the very offset index `components/Search.tsx` builds for quick find, and
+ * needs the very offset index `plugins/quick-find/QuickFind.tsx` builds for quick find, and
  * building a second one here on every click would be paying the document's whole
  * cost to place a single highlight. The section scroll below is the answer when
  * this returns null, and it is the answer the reader would have got from a table
@@ -222,7 +222,7 @@ export interface SearchPanelProps {
  * falls under and the line it is on — and, when a folder is open, the same
  * across every markdown file in it.
  *
- * This is not the other search. Quick find (`components/Search.tsx`) answers
+ * This is not the other search. Quick find (`plugins/quick-find/QuickFind.tsx`) answers
  * "take me to the next one" against what is rendered on screen; this answers
  * "where does this appear", which is a different question and wants a different
  * shape of answer — a list you read rather than a cursor you advance.

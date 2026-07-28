@@ -1,0 +1,101 @@
+/* Design tokens — the shared vocabulary. v1 (2026-07-28)
+ *
+ * This folder is the design system's home (docs/design-system.md is the spec;
+ * the decision log there says why each scale looks the way it does). It is
+ * written to be lifted into another extension wholesale: nothing in this file
+ * knows it lives in a markdown viewer — `mdv` is a namespace, not a meaning.
+ *
+ * What belongs here: value scales — spacing, type, radius, elevation, z-order,
+ * opacity, motion, icon sizes. What does not: colour. The colour tokens live
+ * with the theming machinery (viewer.css baseline + lib/theme-presets.ts),
+ * because they vary per polarity and per preset and are contrast-tested there.
+ * The shadow and scrim tokens below are the one exception — they are elevation,
+ * not palette, but they carry a per-polarity override alongside the palettes.
+ *
+ * Two-domain unit rule (D5): chrome is sized in rem and reads these tokens;
+ * the document body is sized in em so it follows the reader's chosen font
+ * size, and does not read the spacing scale. A document-side value belongs in
+ * viewer.css next to the rule that uses it.
+ *
+ * This file is @imported by entrypoints/viewer.css and inlined at build time,
+ * so at runtime it is part of the injected stylesheet — same availability,
+ * same load-order story. Everything is declared on :root, which reaches the
+ * portalled overlays that live outside #mdv-root.
+ */
+
+:root {
+  /* --- Spacing (chrome only; document spaces in em) --------------------- */
+  --mdv-space-1: 0.125rem;
+  --mdv-space-2: 0.25rem;
+  --mdv-space-3: 0.375rem;
+  --mdv-space-4: 0.5rem;
+  --mdv-space-5: 0.75rem;
+  --mdv-space-6: 1rem;
+  --mdv-space-7: 1.5rem;
+  --mdv-space-8: 2rem;
+
+  /* The corner chrome inset: every fixed pill and toolbar hangs at this
+     distance from its viewport corner. */
+  --mdv-inset-corner: 0.6rem;
+
+  /* --- UI type scale (chrome only; document type is em on its own scale) - */
+  --mdv-text-xs: 0.7rem;
+  --mdv-text-sm: 0.78rem;
+  --mdv-text-md: 0.8125rem;
+  --mdv-text-lg: 0.875rem;
+  --mdv-text-xl: 1rem;
+  /* One leading for chrome. Panels of UI text are short; a per-size leading
+     earned nothing but a bigger table. */
+  --mdv-leading-ui: 1.45;
+
+  /* --- Radius ----------------------------------------------------------- */
+  /* --mdv-radius (8px, the md step) predates the scale and keeps its name —
+     it is referenced everywhere and the asymmetry is cheaper than the churn. */
+  --mdv-radius-sm: 4px;
+  --mdv-radius: 8px;
+  --mdv-radius-lg: 12px;
+  --mdv-radius-full: 999px;
+
+  /* --- Z-order ---------------------------------------------------------- */
+  /* The ladder that used to live in three comments. Steps of 10+ so a surface
+     that genuinely needs "between" has room without renumbering. */
+  --mdv-z-raised: 1; /* above siblings: sticky headers, copy buttons */
+  --mdv-z-corner: 20; /* fixed corner chrome */
+  --mdv-z-dropdown: 30; /* menus, popovers anchored to chrome */
+  --mdv-z-layer: 40; /* full-viewport passive layers (reading progress) */
+  --mdv-z-overlay: 60; /* modal surfaces: palette, dialogs */
+  --mdv-z-top: 100; /* takes the whole screen: presentation, fullscreen */
+
+  /* --- State opacity ----------------------------------------------------- */
+  --mdv-opacity-disabled: 0.45;
+  --mdv-opacity-idle: 0.55; /* resting corner chrome, quiet tabs */
+  --mdv-opacity-faint: 0.35; /* barely-there affordances: folds, anchors */
+
+  /* --- Motion ------------------------------------------------------------ */
+  --mdv-dur-fast: 90ms; /* feedback tracking input: progress, drags */
+  --mdv-dur: 120ms; /* the default: hovers, fades, colour */
+  --mdv-dur-slow: 180ms; /* entrances of new surfaces */
+  --mdv-ease: ease;
+  --mdv-ease-linear: linear;
+
+  /* --- Icons -------------------------------------------------------------- */
+  --mdv-icon-sm: 13px;
+  --mdv-icon-md: 15px;
+}
+
+/* Elevation. Per-polarity because dark surfaces need stronger shadows to
+   separate — there is no ambient light in a dark theme, only contrast. */
+:root,
+:root[data-mdv-theme='light'] {
+  --mdv-shadow-1: 0 1px 2px rgb(0 0 0 / 0.12);
+  --mdv-shadow-2: 0 6px 24px -8px rgb(0 0 0 / 0.3);
+  --mdv-shadow-3: 0 18px 48px -12px rgb(0 0 0 / 0.45);
+  --mdv-scrim: rgb(0 0 0 / 0.32);
+}
+
+:root[data-mdv-theme='dark'] {
+  --mdv-shadow-1: 0 1px 2px rgb(0 0 0 / 0.35);
+  --mdv-shadow-2: 0 6px 24px -8px rgb(0 0 0 / 0.55);
+  --mdv-shadow-3: 0 18px 48px -12px rgb(0 0 0 / 0.65);
+  --mdv-scrim: rgb(0 0 0 / 0.45);
+}

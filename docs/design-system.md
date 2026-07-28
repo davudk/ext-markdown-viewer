@@ -75,6 +75,29 @@ these are not decisions, they are facts of the architecture):
 
 ---
 
+## Decision log
+
+Resolved top-to-bottom with the owner; rationale lives in the decision bodies.
+
+| ID | Decision | Date |
+|---|---|---|
+| D1 | **B** — one shared token layer, per-surface component layers | 2026-07-28 |
+| D2 | **A** — copy-paste `design/` folder, structured for later extraction to an npm package (B) when a second consumer exists | 2026-07-28 |
+| D3 | **Prefix B, tiering A** — keep `--mdv-*`, semantic-only tokens | 2026-07-28 |
+| D5 | **B/B/B** — fine 8-step ladder (`--mdv-space-1..8`: 0.125/0.25/0.375/0.5/0.75/1/1.5/2rem), numeric names, two-domain units (chrome rem, document em) | 2026-07-28 |
+| D6 | **A** — five UI text tokens (`--mdv-text-xs..xl`) with paired line-heights; document keeps its em scale; options/popup px sizes map onto the same tokens | 2026-07-28 |
+| D7 | **A/A/A** — radius 4-step (`--mdv-radius` stays as the md name), shadows 3-level + `--mdv-scrim`, z-index ladder (`--mdv-z-raised/corner/dropdown/layer/overlay/top`) | 2026-07-28 |
+| D8 | **A/A** — durations 90/120/180ms + named easings; opacity semantics tokenized (disabled 0.45, idle 0.55, faint 0.35); colour-based disabled parked in backlog | 2026-07-28 |
+| D9 | **A** — string-based icon module (`design/icons.ts`), stroke 1.6, two sizes (13px/15px), all glyphs round onto them | 2026-07-28 |
+| D10 | **A** — tokens deep, classes shallow: per-plugin recipes stay duplicated, every value inside them is a token; promotion to a shared class only at a fifth instance or a deliberate redesign; sr-only/live-region becomes one shared class immediately | 2026-07-28 |
+| D12 | **All 14 canonical picks adopted as proposed** (12.1–12.14) | 2026-07-28 |
+| D11 | **B** — palette-only migration: options/popup keep `data-theme` + CSS-resolved auto, tokens renamed onto `--mdv-*` (page-scoped additions allowed: `--mdv-page`, `--mdv-card`, `--mdv-shadow-*`), px → rem, drifted components reconciled; rule: polarity resolves in JS only where pins/presets exist | 2026-07-28 |
+| D4 | **C, soft-first** — TS (`design/tokens.ts`) is the source for colour; `check-design.mjs` asserts viewer.css matches before any codegen; structural tokens authored in CSS | 2026-07-28 |
+| D13 | **A** — quiet/reader-first register, stated in the spec; options page pulled slightly toward it in the D11 pass (radius-lg, shadow-1/2) | 2026-07-28 |
+| D14 | **A** — keep the export mirror, guard it with the same check script as D4; generation only if D4 graduates to codegen; preset-carrying exports to product backlog | 2026-07-28 |
+| D15 | **B** — idle affordances are decorative below AA with the binding rule that hover/focus states pass AA; 1.65rem hit floor ratified; "reveal by opacity, never display/visibility" codified | 2026-07-28 |
+| D16 | **A + C** — this document is the living spec; `check-design.mjs` enforces banned literals, token agreement, and the export mirror | 2026-07-28 |
+
 ## How to read the decisions
 
 Each decision has an ID (D1, D2…), options labeled **A / B / C**, and a

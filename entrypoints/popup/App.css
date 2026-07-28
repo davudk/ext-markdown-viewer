@@ -297,7 +297,7 @@ code {
   color: var(--ok);
 }
 
-.notice.is-err {
+.notice.is-error {
   color: var(--err);
 }
 

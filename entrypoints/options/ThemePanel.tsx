@@ -241,7 +241,7 @@ export function ThemePanel({
           id="custom-css-report"
           className={
             cssReport.error
-              ? 'msg is-err'
+              ? 'msg is-error'
               : cssReport.removals.length > 0 || cssReport.truncated
                 ? 'msg is-info'
                 : 'msg'

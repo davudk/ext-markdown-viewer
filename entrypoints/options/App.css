@@ -19,7 +19,6 @@
   --line-strong: #cfd4db;
   --accent: #2f6df6;
   --accent-hover: #2258d8;
-  --accent-fg: #ffffff;
   --ok: #10693c;
   --err: #a5261f;
   --code-bg: #eef0f3;
@@ -40,7 +39,6 @@
     --line-strong: #3a4048;
     --accent: #5b8dff;
     --accent-hover: #7aa2ff;
-    --accent-fg: #0e1116;
     --ok: #63d296;
     --err: #ff8f85;
     --code-bg: #23272d;
@@ -61,7 +59,6 @@
   --line-strong: #3a4048;
   --accent: #5b8dff;
   --accent-hover: #7aa2ff;
-  --accent-fg: #0e1116;
   --ok: #63d296;
   --err: #ff8f85;
   --code-bg: #23272d;
@@ -653,7 +650,7 @@ code {
   color: var(--ok);
 }
 
-.msg.is-err {
+.msg.is-error {
   color: var(--err);
 }
 

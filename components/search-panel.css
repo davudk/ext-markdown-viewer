@@ -1,6 +1,6 @@
 /* Markdown Viewer — the sidebar's Search tab.
 
-   The quick-find bar (search.css) and this panel are two answers to two
+   The quick-find bar (plugins/quick-find) and this panel are two answers to two
    questions, and they look different on purpose: that one is a floating card
    over the document with a cursor you advance, this one is a column of results
    you read. What they share is the token set — every colour here is a --mdv-*

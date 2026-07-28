@@ -14,7 +14,8 @@
    so it uses the UI stack at a fixed size. */
 
 .mdv-toc {
-  --mdv-toc-width: clamp(12.5rem, 20vw, 17rem);
+  /* --mdv-toc-width comes from viewer.css, where the shell's corner offset
+     reads the same value. Redefining it here is how the two once diverged. */
   --mdv-toc-rail: 2.75rem;
 
   position: sticky;
