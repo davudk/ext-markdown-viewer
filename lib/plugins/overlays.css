@@ -17,8 +17,10 @@
      document while no overlay is open. Each surface re-enables its own. */
   pointer-events: none;
   /* Above every in-document affordance. Individual overlays stack within this
-     by the inline z-index the host assigns, so nothing else picks a number. */
-  z-index: 2147483000;
+     by the inline z-index the host assigns, so nothing else picks a number.
+     The fallback matters: this sheet is portalled and must stay correct even
+     if the token sheet has not arrived. */
+  z-index: var(--mdv-z-max, 2147483000);
 }
 
 /*

@@ -240,25 +240,25 @@ body {
    unfilled corner intercepts nothing. */
 .mdv-corner {
   position: fixed;
-  z-index: 20;
+  z-index: var(--mdv-z-corner);
   display: flex;
   align-items: flex-start;
-  gap: 0.35rem;
+  gap: var(--mdv-space-3);
 }
 
 .mdv-corner-top-start {
-  top: 0.6rem;
-  left: 0.6rem;
+  top: var(--mdv-inset-corner);
+  left: var(--mdv-inset-corner);
 }
 
 .mdv-corner-top-end {
-  top: 0.6rem;
-  right: 0.6rem;
+  top: var(--mdv-inset-corner);
+  right: var(--mdv-inset-corner);
 }
 
 /* Clear of the sidebar, which occupies the leading edge when it is open. */
 .mdv-with-toc .mdv-corner-top-start {
-  left: calc(var(--mdv-toc-width) + 0.6rem);
+  left: calc(var(--mdv-toc-width) + var(--mdv-inset-corner));
 }
 
 /* Its own track, so it can never sit on top of the document. Sticky rather
@@ -289,7 +289,7 @@ body {
   /* The sidebar is above the document now, not beside it, so the leading
      corner has nothing to clear. */
   .mdv-with-toc .mdv-corner-top-start {
-    left: 0.6rem;
+    left: var(--mdv-inset-corner);
   }
 }
 

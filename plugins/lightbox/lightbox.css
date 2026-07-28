@@ -54,7 +54,7 @@
      out here; the root token is the right fallback anyway, since this is
      chrome rather than document text. */
   font-family: var(--mdv-font-sans);
-  font-size: 0.875rem;
+  font-size: var(--mdv-text-lg);
   line-height: 1.45;
   color: var(--mdv-fg);
 
@@ -110,8 +110,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.5rem 0.7rem;
+  gap: var(--mdv-space-6);
+  padding: var(--mdv-space-4) var(--mdv-space-5);
   background-color: var(--mdv-surface);
   border-bottom: 1px solid var(--mdv-border);
 }
@@ -126,7 +126,7 @@
 
 .mdv-lightbox-actions {
   display: flex;
-  gap: 0.35rem;
+  gap: var(--mdv-space-3);
 }
 
 .mdv-lightbox-caption {
@@ -182,7 +182,7 @@
 }
 
 .mdv-lightbox-button:disabled {
-  opacity: 0.38;
+  opacity: var(--mdv-opacity-disabled);
   cursor: default;
 }
 
@@ -191,7 +191,7 @@
 .mdv-lightbox-nav {
   position: absolute;
   top: 50%;
-  z-index: 1;
+  z-index: var(--mdv-z-raised);
   translate: 0 -50%;
   display: inline-flex;
   align-items: center;
@@ -202,7 +202,7 @@
   color: var(--mdv-fg-muted);
   background-color: var(--mdv-surface);
   border: 1px solid var(--mdv-border);
-  border-radius: 999px;
+  border-radius: var(--mdv-radius-full);
   cursor: pointer;
   opacity: 0.75;
   transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease,
@@ -244,7 +244,7 @@
   align-items: center;
   justify-content: center;
   min-height: 0;
-  padding: clamp(0.5rem, 2vw, 2rem);
+  padding: clamp(var(--mdv-space-4), 2vw, var(--mdv-space-8));
   /* A zoomed image is clipped to the stage instead of painting over the bar
      and the caption. */
   overflow: hidden;
@@ -262,7 +262,7 @@
   width: auto;
   height: auto;
   transform-origin: center center;
-  transition: transform 160ms ease;
+  transition: transform var(--mdv-dur-slow) ease;
   cursor: zoom-in;
   user-select: none;
   -webkit-user-drag: none;
@@ -319,7 +319,7 @@
   height: 0.95em;
   border: 2px solid var(--mdv-border-strong);
   border-top-color: var(--mdv-accent);
-  border-radius: 999px;
+  border-radius: var(--mdv-radius-full);
   animation: mdv-lightbox-spin 700ms linear infinite;
 }
 
@@ -340,7 +340,7 @@
   }
 
   .mdv-lightbox-stage {
-    padding: 0.35rem;
+    padding: var(--mdv-space-3);
   }
 }
 

@@ -25,18 +25,18 @@
   position: absolute;
   box-sizing: border-box;
   min-width: 12rem;
-  max-width: min(20rem, calc(100vw - 1rem));
-  padding: 0.25rem;
+  max-width: min(20rem, calc(100vw - var(--mdv-space-6)));
+  padding: var(--mdv-space-2);
 
   font-family: var(--mdv-font-sans);
-  font-size: 0.85rem;
+  font-size: var(--mdv-text-lg);
   line-height: 1.4;
   color: var(--mdv-fg);
 
   background-color: var(--mdv-surface);
   border: 1px solid var(--mdv-border);
   border-radius: var(--mdv-radius);
-  box-shadow: 0 6px 24px rgb(0 0 0 / 22%);
+  box-shadow: var(--mdv-shadow-2);
 }
 
 .mdv-diff-menu *,
@@ -48,7 +48,7 @@
 .mdv-diff-menu-item {
   display: block;
   width: 100%;
-  padding: 0.4rem 0.6rem;
+  padding: var(--mdv-space-3) 0.6rem;
   font: inherit;
   color: inherit;
   text-align: left;
@@ -80,7 +80,7 @@
      out here; the root token is the right fallback anyway, since this is
      chrome rather than document text. */
   font-family: var(--mdv-font-sans);
-  font-size: 0.875rem;
+  font-size: var(--mdv-text-lg);
   line-height: 1.5;
   color: var(--mdv-fg);
   background-color: var(--mdv-bg);
@@ -119,8 +119,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 1rem;
-  padding: 0.45rem 0.7rem;
+  gap: var(--mdv-space-4) var(--mdv-space-6);
+  padding: var(--mdv-space-4) var(--mdv-space-5);
   background-color: var(--mdv-surface);
   border-bottom: 1px solid var(--mdv-border);
 }
@@ -128,10 +128,10 @@
 .mdv-diff-title {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--mdv-space-3);
   min-width: 0;
   margin: 0;
-  font-size: 0.9rem;
+  font-size: var(--mdv-text-lg);
   font-weight: 600;
 }
 
@@ -140,7 +140,7 @@
   max-width: 18ch;
   white-space: nowrap;
   text-overflow: ellipsis;
-  padding: 0.1rem 0.4rem;
+  padding: var(--mdv-space-1) var(--mdv-space-3);
   border-radius: var(--mdv-radius-sm);
 }
 
@@ -177,7 +177,7 @@
 .mdv-diff-actions {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--mdv-space-3);
 }
 
 .mdv-diff-tool {
@@ -201,7 +201,7 @@
 }
 
 .mdv-diff-tool:disabled {
-  opacity: 0.45;
+  opacity: var(--mdv-opacity-disabled);
   cursor: default;
 }
 
@@ -213,9 +213,9 @@
 }
 
 .mdv-diff-chip {
-  padding: 0.25rem 0.55rem;
+  padding: var(--mdv-space-2) var(--mdv-space-4);
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--mdv-text-md);
   color: var(--mdv-fg);
   cursor: pointer;
   background-color: var(--mdv-bg);
@@ -232,7 +232,7 @@
 }
 
 .mdv-diff-chip:disabled {
-  opacity: 0.45;
+  opacity: var(--mdv-opacity-disabled);
   cursor: default;
 }
 
@@ -249,18 +249,18 @@
 
 .mdv-diff-note {
   margin: 0;
-  padding: 1.5rem;
+  padding: var(--mdv-space-7);
   color: var(--mdv-fg-muted);
   text-align: center;
 }
 
 .mdv-diff-problem {
-  margin: 0 0 0.75rem;
+  margin: 0 0 var(--mdv-space-5);
   color: var(--mdv-tk-deletion);
 }
 
 .mdv-diff-retry {
-  padding: 0.3rem 0.8rem;
+  padding: var(--mdv-space-2) var(--mdv-space-5);
   font: inherit;
   color: var(--mdv-fg);
   cursor: pointer;
@@ -292,9 +292,9 @@
 }
 
 .mdv-diff-num {
-  padding: 0 0.5rem;
+  padding: 0 var(--mdv-space-4);
   font-family: var(--mdv-font-mono);
-  font-size: 0.78rem;
+  font-size: var(--mdv-text-sm);
   line-height: 1.55;
   text-align: right;
   color: var(--mdv-fg-muted);
@@ -305,7 +305,7 @@
 }
 
 .mdv-diff-cell {
-  padding: 0 0.5rem;
+  padding: 0 var(--mdv-space-4);
   /* The one place a wrap is allowed: a 400-character line must not force the
      whole overlay to scroll sideways. */
   overflow-wrap: anywhere;
@@ -321,7 +321,7 @@
 .mdv-diff-code {
   display: block;
   font-family: var(--mdv-font-mono);
-  font-size: 0.8rem;
+  font-size: var(--mdv-text-md);
   line-height: 1.55;
   white-space: pre-wrap;
   tab-size: 4;
@@ -364,9 +364,9 @@
 .mdv-diff-expand {
   display: block;
   width: 100%;
-  padding: 0.2rem 0.6rem;
+  padding: var(--mdv-space-2) 0.6rem;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: var(--mdv-text-sm);
   color: var(--mdv-fg-muted);
   text-align: left;
   cursor: pointer;
@@ -389,8 +389,8 @@
 
 .mdv-diff-rendered {
   font-family: var(--mdv-font-body, var(--mdv-font-sans));
-  font-size: 0.9rem;
-  padding: 0.15rem 0;
+  font-size: var(--mdv-text-lg);
+  padding: var(--mdv-space-1) 0;
 }
 
 .mdv-diff-rendered > :first-child {
@@ -408,9 +408,9 @@
 
 .mdv-diff-rendered pre {
   overflow-x: auto;
-  padding: 0.5rem;
+  padding: var(--mdv-space-4);
   font-family: var(--mdv-font-mono);
-  font-size: 0.8rem;
+  font-size: var(--mdv-text-md);
   background-color: var(--mdv-surface);
   border-radius: var(--mdv-radius-sm);
 }
@@ -420,7 +420,7 @@
 }
 
 .mdv-diff-rendered :is(th, td) {
-  padding: 0.2rem 0.4rem;
+  padding: var(--mdv-space-2) var(--mdv-space-3);
   border: 1px solid var(--mdv-border);
 }
 
@@ -435,7 +435,7 @@
 
 @media (max-width: 40rem) {
   .mdv-diff-bar {
-    padding: 0.4rem 0.5rem;
+    padding: var(--mdv-space-3) var(--mdv-space-4);
   }
 
   .mdv-diff-name {
@@ -472,7 +472,7 @@
 
 .mdv-diff-picks {
   margin: 0;
-  padding: 0.4rem;
+  padding: var(--mdv-space-3);
   list-style: none;
 }
 
@@ -482,7 +482,7 @@
   align-items: baseline;
   gap: 0.6rem;
   width: 100%;
-  padding: 0.4rem 0.6rem;
+  padding: var(--mdv-space-3) 0.6rem;
   color: inherit;
   text-align: left;
   cursor: pointer;

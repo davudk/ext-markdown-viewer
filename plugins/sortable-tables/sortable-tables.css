@@ -50,8 +50,8 @@
   cursor: pointer;
   /* Faint until the column is sorted or the header is approached: a table of
      eight columns should not read as eight buttons. */
-  opacity: 0.4;
-  transition: opacity 120ms ease, color 120ms ease;
+  opacity: var(--mdv-opacity-faint);
+  transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease;
 }
 
 .mdv-body th:hover > .mdv-sort,

@@ -17,12 +17,12 @@
 
 /* Depth comes from the nesting, so one indent rule covers levels that skip. */
 .mdv-toc-list .mdv-toc-list {
-  padding-left: 0.7rem;
+  padding-left: var(--mdv-space-5);
 }
 
 .mdv-toc-link {
   display: block;
-  padding: 0.26rem 0.5rem;
+  padding: var(--mdv-space-2) var(--mdv-space-4);
   border-radius: var(--mdv-radius-sm);
   color: var(--mdv-fg-muted);
   text-decoration: none;

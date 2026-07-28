@@ -77,17 +77,15 @@
    ========================================================================== */
 
 .mdv-broken-count {
-  --mdv-broken-count-inset: 0.6rem;
-
   font: inherit;
   font-family: var(--mdv-font-sans);
-  font-size: 0.78rem;
+  font-size: var(--mdv-text-sm);
   font-weight: 550;
   line-height: 1;
   position: fixed;
-  left: var(--mdv-broken-count-inset);
-  bottom: var(--mdv-broken-count-inset);
-  z-index: 20;
+  left: var(--mdv-inset-corner);
+  bottom: var(--mdv-inset-corner);
+  z-index: var(--mdv-z-corner);
   display: inline-flex;
   align-items: center;
   gap: 0.4em;
@@ -98,7 +96,7 @@
   border: 1px solid var(--mdv-border);
   border-radius: var(--mdv-radius-sm);
   cursor: pointer;
-  opacity: 0.6;
+  opacity: var(--mdv-opacity-idle);
   box-sizing: border-box;
   transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease,
     border-color var(--mdv-dur) ease;
@@ -132,7 +130,7 @@
   width: min(34rem, 92vw);
   max-height: min(70vh, 40rem);
   overflow-y: auto;
-  padding: 1rem 1.1rem 1.2rem;
+  padding: var(--mdv-space-6) 1.1rem 1.2rem;
   font-family: var(--mdv-font-sans);
   color: var(--mdv-fg);
   background-color: var(--mdv-bg);
@@ -147,14 +145,14 @@
 }
 
 .mdv-broken-title {
-  margin: 0 0 0.3rem;
-  font-size: 1rem;
+  margin: 0 0 var(--mdv-space-2);
+  font-size: var(--mdv-text-xl);
   font-weight: 600;
 }
 
 .mdv-broken-note {
   margin: 0 0 0.9rem;
-  font-size: 0.78rem;
+  font-size: var(--mdv-text-sm);
   line-height: 1.45;
   color: var(--mdv-fg-muted);
 }
@@ -165,16 +163,16 @@
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: var(--mdv-space-3);
 }
 
 .mdv-broken-row {
   font: inherit;
   font-family: var(--mdv-font-sans);
   display: grid;
-  gap: 0.15rem;
+  gap: var(--mdv-space-1);
   width: 100%;
-  padding: 0.5rem 0.6rem;
+  padding: var(--mdv-space-4) 0.6rem;
   text-align: start;
   color: inherit;
   background-color: transparent;
@@ -196,7 +194,7 @@
 }
 
 .mdv-broken-row-text {
-  font-size: 0.86rem;
+  font-size: var(--mdv-text-lg);
   font-weight: 550;
   /* A link's text can be a whole sentence; the row is an index, not the
      document. */
@@ -207,13 +205,13 @@
 
 .mdv-broken-row-href {
   font-family: var(--mdv-font-mono);
-  font-size: 0.74rem;
+  font-size: var(--mdv-text-sm);
   color: var(--mdv-fg-muted);
   overflow-wrap: anywhere;
 }
 
 .mdv-broken-row-reason {
-  font-size: 0.74rem;
+  font-size: var(--mdv-text-sm);
   color: var(--mdv-fg-muted);
 }
 

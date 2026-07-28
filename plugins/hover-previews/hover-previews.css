@@ -28,17 +28,17 @@
   overflow: hidden;
 
   margin: 0;
-  padding: 0.7rem 0.85rem;
+  padding: var(--mdv-space-5) 0.85rem;
   border: 1px solid var(--mdv-border);
   border-radius: var(--mdv-radius, 8px);
   background: var(--mdv-surface);
   color: var(--mdv-fg);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 22%);
+  box-shadow: var(--mdv-shadow-2);
 
   /* Chrome, so the UI stack at a fixed size rather than the reader's document
      typography: a 22px serif preview is a worse glance than a small one. */
   font-family: var(--mdv-font-sans);
-  font-size: 0.82rem;
+  font-size: var(--mdv-text-md);
   line-height: 1.45;
 
   /* It is a tooltip. It must never be in the way of the link it describes, and
@@ -60,7 +60,7 @@
   position: absolute;
   position-area: block-end span-inline-end;
   position-try-fallbacks: flip-block, flip-inline;
-  margin: 0.4rem 0 0;
+  margin: var(--mdv-space-3) 0 0;
   inset: auto;
 }
 
@@ -69,7 +69,7 @@
    in the plugin — deliberately below the overlay stack in `overlays.css`,
    because a preview must never cover a dialog. */
 .mdv-preview[data-mdv-chrome][data-mdv-fallback] {
-  z-index: 30;
+  z-index: var(--mdv-z-dropdown);
 }
 
 /* ==========================================================================

@@ -76,7 +76,7 @@
   cursor: pointer;
   /* Present but recessive: discoverable on approach, and not a row of arrows
      down the left of every document. */
-  opacity: 0.3;
+  opacity: var(--mdv-opacity-faint);
   transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease;
 }
 
@@ -104,7 +104,7 @@
 /* Nothing to hover on a touch screen, so the affordance has to be standing. */
 @media (hover: none) {
   .mdv-body .mdv-fold {
-    opacity: 0.55;
+    opacity: var(--mdv-opacity-idle);
   }
 }
 

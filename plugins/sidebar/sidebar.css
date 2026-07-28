@@ -20,7 +20,7 @@
 
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: var(--mdv-z-raised);
   /* Sticky needs a box shorter than the container to have anywhere to stick;
      as a stretched flex item it would be as tall as the whole document. */
   align-self: flex-start;
@@ -32,7 +32,7 @@
   border-right: 1px solid var(--mdv-border);
   background-color: var(--mdv-surface-alt);
   font-family: var(--mdv-font-sans);
-  font-size: 0.8125rem;
+  font-size: var(--mdv-text-md);
   line-height: 1.45;
   transition: width var(--mdv-dur) ease;
 }
@@ -57,10 +57,10 @@
 .mdv-toc-head {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--mdv-space-3);
   flex: none;
   height: 2.9rem;
-  padding-inline: 0.5rem;
+  padding-inline: var(--mdv-space-4);
   border-bottom: 1px solid var(--mdv-border);
 }
 
@@ -88,7 +88,7 @@
 .mdv-side-tabs {
   display: flex;
   align-items: center;
-  gap: 0.1rem;
+  gap: var(--mdv-space-1);
   /* min-width is what lets the strip shrink and scroll rather than push the
      toggle out of the rail on a narrow sidebar. */
   min-width: 0;
@@ -102,13 +102,13 @@
 
 .mdv-side-tab {
   flex: none;
-  padding: 0.3rem 0.45rem;
+  padding: var(--mdv-space-2) var(--mdv-space-4);
   border: 0;
   border-radius: var(--mdv-radius-sm);
   background: none;
   color: var(--mdv-fg-muted);
   font: inherit;
-  font-size: 0.6875rem;
+  font-size: var(--mdv-text-xs);
   font-weight: 650;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -133,7 +133,7 @@
    `aria-disabled` carries the same meaning to assistive technology, and the
    `title` says which of the reasons it is. */
 .mdv-side-tab[data-mdv-quiet] {
-  opacity: 0.55;
+  opacity: var(--mdv-opacity-idle);
 }
 
 /* ==========================================================================
@@ -162,13 +162,13 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 0.5rem 0.4rem 2.5rem;
+  padding: var(--mdv-space-4) var(--mdv-space-3) 2.5rem;
   scrollbar-width: thin;
   scrollbar-color: var(--mdv-scrollbar) transparent;
 }
 
 .mdv-side-scroll::-webkit-scrollbar {
-  width: 9px;
+  width: 10px;
 }
 
 .mdv-side-scroll::-webkit-scrollbar-track {
@@ -187,7 +187,7 @@
 
 .mdv-side-empty {
   margin: 0;
-  padding: 0.75rem 0.65rem;
+  padding: var(--mdv-space-5) 0.65rem;
   color: var(--mdv-fg-muted);
   text-wrap: pretty;
 }

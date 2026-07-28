@@ -27,20 +27,20 @@
 .mdv-palette-layer {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: var(--mdv-z-overlay);
   display: flex;
   justify-content: center;
   /* Not centred vertically: a list that grows downward from a fixed point is
      far easier to read against than one whose first row moves as you type. */
   align-items: flex-start;
-  padding: min(12vh, 7rem) 1rem 1rem;
+  padding: min(12vh, 7rem) var(--mdv-space-6) var(--mdv-space-6);
   pointer-events: none;
 }
 
 .mdv-palette-scrim {
   position: fixed;
   inset: 0;
-  background-color: rgb(0 0 0 / 0.32);
+  background-color: var(--mdv-scrim);
   pointer-events: auto;
 }
 
@@ -59,9 +59,9 @@
   background-color: var(--mdv-surface);
   color: var(--mdv-fg);
   font-family: var(--mdv-font-sans);
-  font-size: 0.8125rem;
+  font-size: var(--mdv-text-md);
   line-height: 1.45;
-  box-shadow: 0 18px 48px -12px rgb(0 0 0 / 0.45);
+  box-shadow: var(--mdv-shadow-3);
   overflow: hidden;
   pointer-events: auto;
 }
@@ -73,16 +73,16 @@
 .mdv-palette-bar {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: var(--mdv-space-4);
   flex: none;
-  padding: 0.5rem 0.55rem;
+  padding: var(--mdv-space-4) var(--mdv-space-4);
   border-bottom: 1px solid var(--mdv-border);
 }
 
 .mdv-palette-icon {
   flex: none;
   display: block;
-  margin-left: 0.15rem;
+  margin-left: var(--mdv-space-1);
   color: var(--mdv-fg-muted);
 }
 
@@ -91,7 +91,7 @@
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  padding: 0.25rem 0.1rem;
+  padding: var(--mdv-space-2) var(--mdv-space-1);
   border: 0;
   background: none;
   color: var(--mdv-fg);
@@ -153,7 +153,7 @@
   flex: 1 1 auto;
   min-height: 0;
   margin: 0;
-  padding: 0 0 0.3rem;
+  padding: 0 0 var(--mdv-space-2);
   list-style: none;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -162,7 +162,7 @@
 }
 
 .mdv-palette-results::-webkit-scrollbar {
-  width: 9px;
+  width: 10px;
 }
 
 .mdv-palette-results::-webkit-scrollbar-track {
@@ -183,11 +183,11 @@
 .mdv-palette-group {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: var(--mdv-z-raised);
   margin: 0;
-  padding: 0.45rem 0.7rem 0.25rem;
+  padding: var(--mdv-space-4) var(--mdv-space-5) var(--mdv-space-2);
   background-color: var(--mdv-surface);
-  font-size: 0.6875rem;
+  font-size: var(--mdv-text-xs);
   font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -198,7 +198,7 @@
   display: flex;
   align-items: baseline;
   gap: 0.6rem;
-  padding: 0.32rem 0.7rem;
+  padding: var(--mdv-space-3) var(--mdv-space-5);
   border-left: 2px solid transparent;
   color: var(--mdv-fg-muted);
   cursor: pointer;
@@ -213,7 +213,7 @@
 .mdv-palette-text {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
+  gap: var(--mdv-space-4);
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -235,13 +235,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.75rem;
+  font-size: var(--mdv-text-sm);
   color: var(--mdv-fg-muted);
 }
 
 .mdv-palette-hint {
   flex: none;
-  font-size: 0.7rem;
+  font-size: var(--mdv-text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--mdv-fg-muted);
   white-space: nowrap;
@@ -259,14 +259,14 @@
 .mdv-palette-note {
   flex: none;
   margin: 0;
-  padding: 0.5rem 0.7rem;
-  font-size: 0.75rem;
+  padding: var(--mdv-space-4) var(--mdv-space-5);
+  font-size: var(--mdv-text-sm);
   color: var(--mdv-fg-muted);
 }
 
 .mdv-palette-note {
   border-top: 1px solid var(--mdv-border);
-  font-size: 0.7rem;
+  font-size: var(--mdv-text-xs);
 }
 
 /* Announced, never seen — the list itself already says the same thing without

@@ -14,10 +14,10 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--mdv-space-3);
   flex: none;
-  margin: 0.4rem 0.4rem 0.15rem;
-  padding: 0.2rem 0.35rem;
+  margin: var(--mdv-space-3) var(--mdv-space-3) var(--mdv-space-1);
+  padding: var(--mdv-space-2) var(--mdv-space-3);
   border: 1px solid var(--mdv-border);
   border-radius: var(--mdv-radius-sm);
   background-color: var(--mdv-bg);
@@ -34,11 +34,11 @@
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  padding: 0.15rem 0;
+  padding: var(--mdv-space-1) 0;
   border: 0;
   background: none;
   color: var(--mdv-fg);
-  font-size: 0.75rem;
+  font-size: var(--mdv-text-sm);
 }
 
 .mdv-filter-field::placeholder {
@@ -78,7 +78,7 @@
 
 .mdv-filter-count {
   flex: none;
-  font-size: 0.7rem;
+  font-size: var(--mdv-text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--mdv-fg-muted);
   white-space: nowrap;

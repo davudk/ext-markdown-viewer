@@ -25,7 +25,7 @@
 .mdv-reading {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: var(--mdv-z-layer);
   /* The layer spans the whole window, so it must be invisible to the pointer;
      the chip opts back in for itself. */
   pointer-events: none;
@@ -62,7 +62,7 @@
   transform-origin: left center;
   /* Short enough to be imperceptible while scrolling, long enough to glide when
      an anchor link jumps halfway down the document. */
-  transition: transform 90ms linear;
+  transition: transform var(--mdv-dur-fast) linear;
 }
 
 /* ==========================================================================
@@ -75,8 +75,8 @@
 
 .mdv-reading-stats {
   position: absolute;
-  right: 0.6rem;
-  bottom: 0.6rem;
+  right: var(--mdv-inset-corner);
+  bottom: var(--mdv-inset-corner);
   max-width: min(22rem, 70vw);
   margin: 0;
   padding: 0.4em 0.6em;
@@ -84,7 +84,7 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.35em;
-  font-size: 0.72rem;
+  font-size: var(--mdv-text-xs);
   font-weight: 500;
   line-height: 1.35;
   color: var(--mdv-fg-muted);
@@ -93,7 +93,7 @@
   border-radius: var(--mdv-radius-sm);
   /* Selectable and hoverable, unlike the layer around it. */
   pointer-events: auto;
-  opacity: 0.55;
+  opacity: var(--mdv-opacity-idle);
   transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease;
 }
 
@@ -114,7 +114,7 @@
 /* Nothing to hover on a touch screen, so the chip has to be legible standing. */
 @media (hover: none) {
   .mdv-reading-stats {
-    opacity: 0.8;
+    opacity: var(--mdv-opacity-idle);
   }
 }
 

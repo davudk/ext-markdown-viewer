@@ -977,11 +977,11 @@ const STYLESHEET = `
 
 .mdv-mermaid-controls {
   position: absolute;
-  top: 0.4rem;
-  right: 0.4rem;
+  top: var(--mdv-space-3);
+  right: var(--mdv-space-3);
   display: flex;
-  gap: 0.2rem;
-  padding: 0.15rem;
+  gap: var(--mdv-space-2);
+  padding: var(--mdv-space-1);
   background-color: color-mix(in srgb, var(--mdv-surface) 88%, transparent);
   border: 1px solid var(--mdv-border);
   border-radius: var(--mdv-radius-sm);
@@ -1024,7 +1024,7 @@ const STYLESHEET = `
 .mdv-mermaid[data-mdv-mermaid-cover] {
   position: fixed;
   inset: 0;
-  z-index: 2147483000;
+  z-index: var(--mdv-z-top, 100);
   margin: 0;
 }
 

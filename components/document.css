@@ -58,7 +58,7 @@
 
 .mdv-tool {
   font: inherit;
-  font-size: 0.78rem;
+  font-size: var(--mdv-text-sm);
   font-weight: 550;
   line-height: 1;
   display: inline-flex;
@@ -71,7 +71,7 @@
   border: 1px solid var(--mdv-border);
   border-radius: var(--mdv-radius-sm);
   cursor: pointer;
-  opacity: 0.55;
+  opacity: var(--mdv-opacity-idle);
   transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease,
     background-color var(--mdv-dur) ease, border-color var(--mdv-dur) ease;
 }
@@ -116,13 +116,13 @@
 
 .mdv-body .mdv-copy {
   font: inherit;
-  font-size: 0.72rem;
+  font-size: var(--mdv-text-xs);
   font-weight: 550;
   line-height: 1;
   position: absolute;
-  top: 0.45rem;
-  right: 0.45rem;
-  z-index: 1;
+  top: var(--mdv-space-4);
+  right: var(--mdv-space-4);
+  z-index: var(--mdv-z-raised);
   display: inline-flex;
   align-items: center;
   margin: 0;
@@ -163,7 +163,7 @@
 /* Nothing to hover on a touch screen, so the affordance has to be standing. */
 @media (hover: none) {
   .mdv-body .mdv-copy {
-    opacity: 1;
+    opacity: var(--mdv-opacity-idle);
   }
 }
 
@@ -192,7 +192,7 @@
   /* One line box of the heading it belongs to, so the icon stays optically
      centred on the first line whether that line is an h1 or an h4. */
   height: 1lh;
-  margin-right: 0.15rem;
+  margin-right: var(--mdv-space-1);
   color: var(--mdv-fg-muted);
   text-decoration: none;
   opacity: 0;
@@ -220,7 +220,7 @@
 
 @media (hover: none) {
   .mdv-body .mdv-anchor {
-    opacity: 0.4;
+    opacity: var(--mdv-opacity-idle);
   }
 }
 

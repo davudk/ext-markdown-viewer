@@ -12,9 +12,9 @@
 .mdv-folder-bar {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--mdv-space-3);
   flex: none;
-  padding: 0.4rem 0.5rem;
+  padding: var(--mdv-space-3) var(--mdv-space-4);
   border-bottom: 1px solid var(--mdv-border);
 }
 
@@ -32,13 +32,13 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.25rem 0.25rem 1rem;
+  gap: var(--mdv-space-4);
+  padding: var(--mdv-space-2) var(--mdv-space-2) var(--mdv-space-6);
 }
 
 .mdv-folder-action {
   margin-inline: 0.65rem;
-  padding: 0.4rem 0.75rem;
+  padding: var(--mdv-space-3) var(--mdv-space-5);
   border: 1px solid var(--mdv-border-strong);
   border-radius: var(--mdv-radius-sm);
   background-color: var(--mdv-surface);
@@ -57,13 +57,13 @@
 .mdv-folder-quiet {
   flex: none;
   margin-inline: 0.65rem;
-  padding: 0.15rem 0.3rem;
+  padding: var(--mdv-space-1) var(--mdv-space-2);
   border: 0;
   border-radius: var(--mdv-radius-sm);
   background: none;
   color: var(--mdv-fg-muted);
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--mdv-text-sm);
   cursor: pointer;
   transition: color var(--mdv-dur) ease, background-color var(--mdv-dur) ease;
 }
@@ -79,9 +79,9 @@
 
 .mdv-folder-error,
 .mdv-folder-note {
-  margin: 0.5rem 0.65rem 0;
+  margin: var(--mdv-space-4) 0.65rem 0;
   color: var(--mdv-fg-muted);
-  font-size: 0.75rem;
+  font-size: var(--mdv-text-sm);
   text-wrap: pretty;
 }
 
@@ -96,12 +96,12 @@
 .mdv-folder-row {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--mdv-space-3);
   width: 100%;
   /* Depth is a number, so the indent is one multiplication rather than a rule
      per level — and levels below the deepest styled one cannot look wrong. */
-  padding: 0.26rem 0.5rem 0.26rem
-    calc(0.35rem + var(--mdv-folder-depth, 0) * 0.75rem);
+  padding: var(--mdv-space-2) var(--mdv-space-4) var(--mdv-space-2)
+    calc(var(--mdv-space-3) + var(--mdv-folder-depth, 0) * var(--mdv-space-5));
   border: 0;
   border-radius: var(--mdv-radius-sm);
   background: none;
@@ -157,5 +157,5 @@
    showing. Opacity rather than a spinner: no animation to leak into print, and
    nothing that moves under a reader who asked not to be moved. */
 .mdv-folder-caret[data-busy] {
-  opacity: 0.4;
+  opacity: var(--mdv-opacity-disabled);
 }

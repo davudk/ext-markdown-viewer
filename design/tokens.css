@@ -65,6 +65,10 @@
   --mdv-z-layer: 40; /* full-viewport passive layers (reading progress) */
   --mdv-z-overlay: 60; /* modal surfaces: palette, dialogs */
   --mdv-z-top: 100; /* takes the whole screen: presentation, fullscreen */
+  /* The portal layer's escape hatch: above anything a host page or an add-on
+     could reasonably pick. Only the overlay portal may use it — overlays order
+     among themselves by their own stack, not by out-bidding this number. */
+  --mdv-z-max: 2147483000;
 
   /* --- State opacity ----------------------------------------------------- */
   --mdv-opacity-disabled: 0.45;

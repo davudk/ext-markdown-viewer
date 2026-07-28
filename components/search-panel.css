@@ -48,10 +48,10 @@
 .mdv-find-head {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: var(--mdv-space-2);
   flex: none;
-  margin: 0.4rem 0.45rem 0.3rem;
-  padding: 0.15rem 0.2rem;
+  margin: var(--mdv-space-3) var(--mdv-space-4) var(--mdv-space-2);
+  padding: var(--mdv-space-1) var(--mdv-space-2);
   border: 1px solid var(--mdv-border);
   border-radius: var(--mdv-radius-sm);
   background-color: var(--mdv-bg);
@@ -69,7 +69,7 @@
      size and the option buttons are pushed out of the sidebar entirely. */
   min-width: 0;
   margin: 0;
-  padding: 0.3rem 0.35rem;
+  padding: var(--mdv-space-2) var(--mdv-space-3);
   border: 0;
   background: none;
   color: var(--mdv-fg);
@@ -92,7 +92,7 @@
 .mdv-find-options {
   display: flex;
   align-items: center;
-  gap: 0.1rem;
+  gap: var(--mdv-space-1);
   flex: none;
 }
 
@@ -105,12 +105,12 @@
   min-width: 1.5rem;
   height: 1.5rem;
   margin: 0;
-  padding-inline: 0.25rem;
+  padding-inline: var(--mdv-space-2);
   border: 0;
   border-radius: var(--mdv-radius-sm);
   background: none;
   color: var(--mdv-fg-muted);
-  font-size: 0.7rem;
+  font-size: var(--mdv-text-xs);
   font-weight: 650;
   cursor: pointer;
   transition: background-color var(--mdv-dur) ease, color var(--mdv-dur) ease;
@@ -133,9 +133,9 @@
 .mdv-find-scope {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--mdv-space-3);
   flex: none;
-  margin: 0 0.65rem 0.2rem;
+  margin: 0 0.65rem var(--mdv-space-2);
   color: var(--mdv-fg-muted);
   cursor: pointer;
 }
@@ -144,7 +144,7 @@
    deactivated control — it still has to be readable enough to explain itself
    through its title. */
 .mdv-find-scope:has(input:disabled) {
-  opacity: 0.55;
+  opacity: var(--mdv-opacity-idle);
   cursor: default;
 }
 
@@ -156,8 +156,8 @@
 
 .mdv-find-error {
   flex: none;
-  margin: 0.15rem 0.65rem 0.3rem;
-  padding: 0.3rem 0.45rem;
+  margin: var(--mdv-space-1) 0.65rem var(--mdv-space-2);
+  padding: var(--mdv-space-2) var(--mdv-space-4);
   border-radius: var(--mdv-radius-sm);
   background-color: var(--mdv-tk-deletion-bg);
   color: var(--mdv-tk-deletion);
@@ -168,8 +168,8 @@
 
 .mdv-find-summary {
   flex: none;
-  margin: 0 0.65rem 0.25rem;
-  font-size: 0.75rem;
+  margin: 0 0.65rem var(--mdv-space-2);
+  font-size: var(--mdv-text-sm);
   font-variant-numeric: tabular-nums;
   color: var(--mdv-fg-muted);
 }
@@ -183,11 +183,11 @@
    ========================================================================== */
 
 .mdv-find-results {
-  padding-top: 0.15rem;
+  padding-top: var(--mdv-space-1);
 }
 
 .mdv-find-group {
-  margin-bottom: 0.15rem;
+  margin-bottom: var(--mdv-space-1);
 }
 
 .mdv-find-file,
@@ -206,11 +206,11 @@
 
 .mdv-find-file {
   align-items: center;
-  gap: 0.3rem;
+  gap: var(--mdv-space-2);
   position: sticky;
   top: 0;
-  z-index: 1;
-  padding: 0.25rem 0.35rem;
+  z-index: var(--mdv-z-raised);
+  padding: var(--mdv-space-2) var(--mdv-space-3);
   background-color: var(--mdv-surface-alt);
   color: var(--mdv-fg);
   font-weight: 600;
@@ -245,11 +245,11 @@
 
 .mdv-find-file-count {
   flex: none;
-  padding: 0 0.3rem;
-  border-radius: 999px;
+  padding: 0 var(--mdv-space-2);
+  border-radius: var(--mdv-radius-full);
   background-color: var(--mdv-surface);
   color: var(--mdv-fg-muted);
-  font-size: 0.6875rem;
+  font-size: var(--mdv-text-xs);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
@@ -262,7 +262,7 @@
 .mdv-find-hit {
   flex-direction: column;
   gap: 0.05rem;
-  padding: 0.25rem 0.4rem 0.25rem 1.1rem;
+  padding: var(--mdv-space-2) var(--mdv-space-3) var(--mdv-space-2) 1.1rem;
   border-left: 2px solid transparent;
   color: var(--mdv-fg-muted);
 }
@@ -275,8 +275,8 @@
 .mdv-find-meta {
   display: flex;
   align-items: baseline;
-  gap: 0.4rem;
-  font-size: 0.6875rem;
+  gap: var(--mdv-space-3);
+  font-size: var(--mdv-text-xs);
   color: var(--mdv-fg-muted);
 }
 
@@ -303,7 +303,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--mdv-font-mono);
-  font-size: 0.75rem;
+  font-size: var(--mdv-text-sm);
 }
 
 .mdv-find-mark {
@@ -315,10 +315,10 @@
 }
 
 .mdv-find-note {
-  margin: 0.4rem 0.25rem 0;
-  padding: 0.3rem 0.4rem;
+  margin: var(--mdv-space-3) var(--mdv-space-2) 0;
+  padding: var(--mdv-space-2) var(--mdv-space-3);
   border-top: 1px solid var(--mdv-border);
-  font-size: 0.7rem;
+  font-size: var(--mdv-text-xs);
   color: var(--mdv-fg-muted);
   text-wrap: pretty;
 }

@@ -24,22 +24,20 @@
    Contributed to `chrome.bottom-end`, which names the corner but does not lay
    it out — a region is a mount point, so a floating control still positions
    itself. Muted until approached, so it reads as chrome rather than content.
-   The inset is a custom property so that another piece of fixed chrome
-   arriving in the same corner can be moved out of its way in one declaration.
+   The inset is the shared corner token, so every piece of fixed chrome hangs
+   the same distance from its viewport corner.
    ========================================================================== */
 
 .mdv-present-launch {
-  --mdv-present-launch-inset: 0.6rem;
-
   font: inherit;
   font-family: var(--mdv-font-sans);
-  font-size: 0.78rem;
+  font-size: var(--mdv-text-sm);
   font-weight: 550;
   line-height: 1;
   position: fixed;
-  right: var(--mdv-present-launch-inset);
-  bottom: var(--mdv-present-launch-inset);
-  z-index: 20;
+  right: var(--mdv-inset-corner);
+  bottom: var(--mdv-inset-corner);
+  z-index: var(--mdv-z-corner);
   display: inline-flex;
   align-items: center;
   gap: 0.4em;
@@ -50,7 +48,7 @@
   border: 1px solid var(--mdv-border);
   border-radius: var(--mdv-radius-sm);
   cursor: pointer;
-  opacity: 0.55;
+  opacity: var(--mdv-opacity-idle);
   box-sizing: border-box;
   transition: opacity var(--mdv-dur) ease, color var(--mdv-dur) ease,
     border-color var(--mdv-dur) ease;
@@ -69,20 +67,17 @@
    Opaque, and the only surface the reader can reach: the host inerts
    everything beneath a modal overlay.
 
-   The one number here is not the old hand-picked z-index and is not permanent.
-   The overlay layer sets a z-index per stack position, but it sets it on a
-   statically positioned wrapper, where it has no effect — and the shell's
-   remaining hand-wired chrome still paints at 20, 30, 40 and 60. This clears
-   all of them and stays below the lightbox's own 2147483000, which is where
-   the deck sat before: if an image viewer does somehow open over a deck, being
-   able to see it beats a dialog trapped behind an overlay. It goes when the
-   overlay layer carries a stylesheet of its own.
+   The deck takes the whole screen, so it sits on the top step of the z-order
+   ladder, `--mdv-z-top`. That clears every other rung the shell's chrome uses
+   and stays below the lightbox's own 2147483000, which is where the deck sat
+   before: if an image viewer does somehow open over a deck, being able to see
+   it beats a dialog trapped behind an overlay.
    ========================================================================== */
 
 .mdv-present {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: var(--mdv-z-top);
   display: flex;
 
   /* `--mdv-font-body` is written inline on `.mdv` and is therefore invisible
@@ -163,7 +158,7 @@
 
   font-size: clamp(1.05rem, 1.5vw + 0.95vh, 2.35rem);
   line-height: var(--mdv-line-height, var(--mdv-leading));
-  animation: mdv-present-in 180ms ease-out;
+  animation: mdv-present-in var(--mdv-dur-slow) ease-out;
 }
 
 @keyframes mdv-present-in {
@@ -249,9 +244,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.5rem 0.7rem;
-  font-size: 0.875rem;
+  gap: var(--mdv-space-6);
+  padding: var(--mdv-space-4) var(--mdv-space-5);
+  font-size: var(--mdv-text-lg);
   line-height: 1.45;
   background-color: var(--mdv-surface);
   border-top: 1px solid var(--mdv-border);
@@ -273,7 +268,7 @@
 .mdv-present-actions {
   flex: none;
   display: flex;
-  gap: 0.35rem;
+  gap: var(--mdv-space-3);
 }
 
 .mdv-present-button {
@@ -298,7 +293,7 @@
 }
 
 .mdv-present-button:disabled {
-  opacity: 0.38;
+  opacity: var(--mdv-opacity-disabled);
   cursor: default;
 }
 
@@ -313,7 +308,7 @@
 
 @media (max-width: 30rem) {
   .mdv-present-stage {
-    padding: 0.75rem;
+    padding: var(--mdv-space-5);
   }
 
   .mdv-present .mdv-present-content {

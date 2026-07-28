@@ -19,7 +19,8 @@
     "test": "node --experimental-strip-types --test \"test/**/*.test.ts\"",
     "audit:network": "node scripts/audit-network.mjs",
     "check:build": "node scripts/check-build.mjs",
-    "verify": "npm run compile && npm run test && npm run build && npm run check:build && npm run audit:network",
+    "check:design": "node scripts/check-design.mjs",
+    "verify": "npm run compile && npm run test && npm run build && npm run check:build && npm run check:design && npm run audit:network",
     "postinstall": "wxt prepare"
   },
   "dependencies": {
