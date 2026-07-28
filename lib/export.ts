@@ -729,7 +729,9 @@ body, body * { box-sizing: border-box; }
     --mdv-border: #c4ccd4;
     --mdv-border-strong: #9aa4ae;
     --mdv-accent: #0a3f92;
+    --mdv-accent-hover: #0a3f92;
     --mdv-visited: #0a3f92;
+    --mdv-on-accent: #ffffff;
     --mdv-mark-bg: #fff3c4;
     --mdv-tk-keyword: #8f1a24;
     --mdv-tk-string: #0a3069;

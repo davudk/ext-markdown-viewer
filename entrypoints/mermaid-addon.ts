@@ -32,6 +32,14 @@ import {
   VIEWER_ROOT_ID,
   VIEWER_THEME_DATASET_KEY,
 } from '@/lib/config';
+import {
+  ICON_DOWNLOAD_PNG,
+  ICON_DOWNLOAD_SVG,
+  ICON_FULLSCREEN,
+  ICON_RESET,
+  ICON_ZOOM_IN,
+  ICON_ZOOM_OUT,
+} from '@/design/icons';
 
 /* -------------------------------------------------------------------------- */
 /* Pan, zoom and export                                                        */
@@ -516,8 +524,8 @@ function activate(figure: HTMLElement, source: HTMLElement): void {
   addButton(controls, 'Zoom out', ICON_ZOOM_OUT, () => scale(pz, stage, drawing, 1 / MERMAID_ZOOM.step));
   addButton(controls, 'Reset view', ICON_RESET, () => reset(pz));
   addButton(controls, 'Fullscreen', ICON_FULLSCREEN, () => void toggleFullscreen(figure));
-  addButton(controls, 'Download SVG', ICON_SVG, () => exportSvg(figure));
-  addButton(controls, 'Download PNG', ICON_PNG, () => void exportPng(figure));
+  addButton(controls, 'Download SVG', ICON_DOWNLOAD_SVG, () => exportSvg(figure));
+  addButton(controls, 'Download PNG', ICON_DOWNLOAD_PNG, () => void exportPng(figure));
 
   stage.addEventListener('keydown', (event) => {
     if (event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
@@ -1064,23 +1072,6 @@ const STYLESHEET = `
   .mdv-mermaid-controls { transition: none; }
 }
 `;
-
-/* -------------------------------------------------------------------------- */
-/* Icons — inline, because the extension never loads a resource of any kind.   */
-/* -------------------------------------------------------------------------- */
-
-const ICON = [
-  '<svg viewBox="0 0 16 16" width="13" height="13" fill="none"',
-  'stroke="currentColor" stroke-width="1.6" stroke-linecap="round"',
-  'stroke-linejoin="round" aria-hidden="true" focusable="false">',
-].join(' ');
-
-const ICON_ZOOM_IN = `${ICON}<circle cx="7" cy="7" r="4.4"/><path d="M10.3 10.3 14 14M7 5.2v3.6M5.2 7h3.6"/></svg>`;
-const ICON_ZOOM_OUT = `${ICON}<circle cx="7" cy="7" r="4.4"/><path d="M10.3 10.3 14 14M5.2 7h3.6"/></svg>`;
-const ICON_RESET = `${ICON}<path d="M13 8a5 5 0 1 1-1.6-3.7"/><path d="M13.2 2.4v2.9h-2.9"/></svg>`;
-const ICON_FULLSCREEN = `${ICON}<path d="M2.6 6V2.6H6M10 2.6h3.4V6M13.4 10v3.4H10M6 13.4H2.6V10"/></svg>`;
-const ICON_SVG = `${ICON}<path d="M8 2.4v7.4M5.2 7l2.8 2.8L10.8 7M2.8 12.2v1.4h10.4v-1.4"/></svg>`;
-const ICON_PNG = `${ICON}<rect x="2.4" y="3.2" width="11.2" height="9.6" rx="1.4"/><circle cx="5.8" cy="6.4" r="1"/><path d="m2.8 11 3.4-3.1 3 2.6 2-1.7 2.2 2"/></svg>`;
 
 /* -------------------------------------------------------------------------- */
 /* Staying current                                                             */

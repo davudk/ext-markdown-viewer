@@ -10,65 +10,79 @@
 :root {
   color-scheme: light;
 
-  --page: #f4f5f7;
-  --card: #ffffff;
-  --surface: #f6f7f9;
-  --fg: #16191d;
-  --muted: #5c636e;
-  --line: #e3e6ea;
-  --line-strong: #cfd4db;
-  --accent: #2f6df6;
-  --accent-hover: #2258d8;
-  --ok: #10693c;
-  --err: #a5261f;
-  --code-bg: #eef0f3;
-  --thumb: #ffffff;
-  --shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.04);
+  --mdv-page: #f4f5f7;
+  --mdv-card: #ffffff;
+  --mdv-surface: #f6f8fa;
+  --mdv-fg: #1f2328;
+  --mdv-fg-muted: #5a636d;
+  --mdv-border: #d5dbe1;
+  --mdv-border-strong: #b6bfc9;
+  --mdv-accent: #0a53be;
+  --mdv-accent-hover: #08409a;
+  --mdv-on-accent: #ffffff;
+  --mdv-ok: #10693c;
+  --mdv-err: #a5261f;
+  --mdv-code-bg: #eef0f3;
+  --mdv-thumb: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
 
-    --page: #101216;
-    --card: #1a1d22;
-    --surface: #21252b;
-    --fg: #e8eaed;
-    --muted: #a2a9b4;
-    --line: #2b2f36;
-    --line-strong: #3a4048;
-    --accent: #5b8dff;
-    --accent-hover: #7aa2ff;
-    --ok: #63d296;
-    --err: #ff8f85;
-    --code-bg: #23272d;
-    --thumb: #f3f5f8;
-    --shadow: none;
+    --mdv-page: #0d1117;
+    --mdv-card: #161b22;
+    --mdv-surface: #161b22;
+    --mdv-fg: #e6edf3;
+    --mdv-fg-muted: #9aa4af;
+    --mdv-border: #30363d;
+    --mdv-border-strong: #4a525c;
+    --mdv-accent: #6cb1ff;
+    --mdv-accent-hover: #8cc4ff;
+    --mdv-on-accent: #0d1117;
+    --mdv-ok: #63d296;
+    --mdv-err: #ff8f85;
+    --mdv-code-bg: #23272d;
+    --mdv-thumb: #f3f5f8;
+
+    /* tokens.css keys its per-polarity elevation on `data-mdv-theme`, which this
+       page does not set; restate the dark values here. */
+    --mdv-shadow-1: 0 1px 2px rgb(0 0 0 / 0.35);
+    --mdv-shadow-2: 0 6px 24px -8px rgb(0 0 0 / 0.55);
+    --mdv-shadow-3: 0 18px 48px -12px rgb(0 0 0 / 0.65);
+    --mdv-scrim: rgb(0 0 0 / 0.45);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --page: #101216;
-  --card: #1a1d22;
-  --surface: #21252b;
-  --fg: #e8eaed;
-  --muted: #a2a9b4;
-  --line: #2b2f36;
-  --line-strong: #3a4048;
-  --accent: #5b8dff;
-  --accent-hover: #7aa2ff;
-  --ok: #63d296;
-  --err: #ff8f85;
-  --code-bg: #23272d;
-  --thumb: #f3f5f8;
-  --shadow: none;
+  --mdv-page: #0d1117;
+  --mdv-card: #161b22;
+  --mdv-surface: #161b22;
+  --mdv-fg: #e6edf3;
+  --mdv-fg-muted: #9aa4af;
+  --mdv-border: #30363d;
+  --mdv-border-strong: #4a525c;
+  --mdv-accent: #6cb1ff;
+  --mdv-accent-hover: #8cc4ff;
+  --mdv-on-accent: #0d1117;
+  --mdv-ok: #63d296;
+  --mdv-err: #ff8f85;
+  --mdv-code-bg: #23272d;
+  --mdv-thumb: #f3f5f8;
+
+  /* tokens.css keys its per-polarity elevation on `data-mdv-theme`, which this
+     page does not set; restate the dark values here. */
+  --mdv-shadow-1: 0 1px 2px rgb(0 0 0 / 0.35);
+  --mdv-shadow-2: 0 6px 24px -8px rgb(0 0 0 / 0.55);
+  --mdv-shadow-3: 0 18px 48px -12px rgb(0 0 0 / 0.65);
+  --mdv-scrim: rgb(0 0 0 / 0.45);
 }
 
 body {
-  background: var(--page);
-  color: var(--fg);
+  background: var(--mdv-page);
+  color: var(--mdv-fg);
 }
 
 .page {
@@ -97,7 +111,7 @@ body {
   max-height: calc(100vh - 48px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding-right: 4px;
+  padding-right: var(--mdv-space-2);
 }
 
 .content {
@@ -111,16 +125,16 @@ body {
 
 .group-head {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--mdv-text-lg);
   font-weight: 650;
   letter-spacing: -0.005em;
 }
 
 .group-note {
   margin: 3px 0 14px;
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
   line-height: 1.6;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 .group .card:first-of-type {
@@ -135,16 +149,16 @@ body {
 /* Table of contents --------------------------------------------------------- */
 
 .toc {
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
 }
 
 .toc-head {
-  margin: 0 0 8px;
-  font-size: 11px;
+  margin: 0 0 var(--mdv-space-4);
+  font-size: var(--mdv-text-xs);
   font-weight: 650;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 .toc-list + .toc-head,
@@ -160,73 +174,70 @@ body {
 
 .toc-group {
   display: block;
-  margin: 16px 0 6px;
-  font-size: 12px;
+  margin: var(--mdv-space-6) 0 var(--mdv-space-3);
+  font-size: var(--mdv-text-sm);
   font-weight: 650;
-  color: var(--fg);
+  color: var(--mdv-fg);
 }
 
 .toc-group-note {
   display: block;
   margin-top: 1px;
-  font-size: 11.5px;
+  font-size: var(--mdv-text-xs);
   font-weight: 400;
   line-height: 1.45;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 .toc-link {
   display: block;
   padding: 5px 10px;
-  border-radius: 7px;
+  border-radius: var(--mdv-radius-sm);
   /* A rail on the left of every entry, transparent until the entry is current.
      Drawn always rather than added on activation, so nothing shifts sideways as
      the highlight moves down the list. */
   border-left: 2px solid transparent;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
   text-decoration: none;
   line-height: 1.35;
   overflow-wrap: anywhere;
 }
 
 .toc-link:hover {
-  background: var(--surface);
-  color: var(--fg);
+  background: var(--mdv-surface);
+  color: var(--mdv-fg);
 }
 
 .toc-link:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: -1px;
 }
 
 .toc-link[aria-current='true'] {
-  border-left-color: var(--accent);
-  background: var(--surface);
-  color: var(--fg);
+  border-left-color: var(--mdv-accent);
+  background: var(--mdv-surface);
+  color: var(--mdv-fg);
   font-weight: 600;
 }
 
 .toc-empty {
   margin: 10px 0 0;
   padding: 10px;
-  font-size: 12.5px;
-  color: var(--muted);
+  font-size: var(--mdv-text-md);
+  color: var(--mdv-fg-muted);
 }
 
-/* `FilterBox` is a viewer component and draws itself from --mdv-* tokens, which
-   only exist on a rendered document. Mapping them onto this page's palette here
-   is what lets the same component be reused rather than reimplemented — and it
-   is a mapping, so both themes follow for free. */
+/* `FilterBox` is a viewer component and draws itself from --mdv-* tokens. Now
+   that this page speaks the same vocabulary, most of them are simply inherited;
+   the two below are the only genuine remaps — the box sits on a card, not on the
+   page, and wants the stronger border. (An identity mapping like
+   `--mdv-fg: var(--mdv-fg)` would be a self-reference and resolve to nothing,
+   so the rest are deliberately absent rather than restated.) */
 .toc-filter {
-  --mdv-bg: var(--card);
-  --mdv-surface: var(--surface);
-  --mdv-fg: var(--fg);
-  --mdv-fg-muted: var(--muted);
-  --mdv-border: var(--line-strong);
-  --mdv-accent: var(--accent);
-  --mdv-radius-sm: 7px;
+  --mdv-bg: var(--mdv-card);
+  --mdv-border: var(--mdv-border-strong);
 
-  margin-bottom: 4px;
+  margin-bottom: var(--mdv-space-2);
 }
 
 .toc-filter .mdv-filter {
@@ -235,20 +246,20 @@ body {
 }
 
 .toc-filter .mdv-filter-field {
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
 }
 
 /* Colophon ------------------------------------------------------------------ */
 
 .colophon {
   margin-top: 28px;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
+  padding-top: var(--mdv-space-6);
+  border-top: 1px solid var(--mdv-border);
 }
 
 .colophon-name {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
   font-weight: 600;
 }
 
@@ -263,7 +274,7 @@ body {
 }
 
 .card:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: 2px;
 }
 
@@ -272,28 +283,28 @@ body {
 .masthead {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
+  gap: var(--mdv-space-5);
+  margin-bottom: var(--mdv-space-7);
 }
 
 .masthead h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 650;
   letter-spacing: -0.015em;
 }
 
 .masthead-sub {
   margin: 1px 0 0;
-  font-size: 13px;
-  color: var(--muted);
+  font-size: var(--mdv-text-md);
+  color: var(--mdv-fg-muted);
 }
 
 .mark {
   width: 30px;
   height: 30px;
   flex: none;
-  color: var(--accent);
+  color: var(--mdv-accent);
 }
 
 .icon {
@@ -306,10 +317,10 @@ body {
 /* Cards -------------------------------------------------------------------- */
 
 .card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  box-shadow: var(--shadow);
+  background: var(--mdv-card);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-lg);
+  box-shadow: var(--mdv-shadow-1);
   overflow: hidden;
 }
 
@@ -318,18 +329,18 @@ body {
 }
 
 .card-head {
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
+  padding: var(--mdv-space-5) 20px;
+  border-bottom: 1px solid var(--mdv-border);
+  background: var(--mdv-surface);
 }
 
 .card-head h2 {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--mdv-text-xs);
   font-weight: 650;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 /* Rows --------------------------------------------------------------------- */
@@ -338,12 +349,12 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
+  gap: var(--mdv-space-7);
   padding: 18px 20px;
 }
 
 .row + .row {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--mdv-border);
 }
 
 .row-stack {
@@ -356,7 +367,7 @@ body {
 }
 
 .row-quiet .msg:not(:empty) {
-  padding: 12px 0 16px;
+  padding: var(--mdv-space-5) 0 var(--mdv-space-6);
 }
 
 .row-text {
@@ -367,27 +378,27 @@ body {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: var(--mdv-space-4);
   margin: 0;
-  font-size: 15px;
+  font-size: var(--mdv-text-lg);
   font-weight: 600;
   letter-spacing: -0.005em;
 }
 
 .row-title-ok .icon {
-  color: var(--ok);
+  color: var(--mdv-ok);
 }
 
 .row-desc {
-  margin: 7px 0 0;
-  font-size: 13px;
+  margin: var(--mdv-space-4) 0 0;
+  font-size: var(--mdv-text-md);
   line-height: 1.6;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
   overflow-wrap: anywhere;
 }
 
 .row-desc p {
-  margin: 0 0 9px;
+  margin: 0 0 var(--mdv-space-4);
 }
 
 .row-desc p:last-child {
@@ -396,15 +407,15 @@ body {
 
 .version {
   font-weight: 400;
-  font-size: 13px;
-  color: var(--muted);
+  font-size: var(--mdv-text-md);
+  color: var(--mdv-fg-muted);
 }
 
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.92em;
-  background: var(--code-bg);
-  border-radius: 4px;
+  background: var(--mdv-code-bg);
+  border-radius: var(--mdv-radius-sm);
   padding: 1px 4px;
 }
 
@@ -414,58 +425,58 @@ code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 8px;
+  gap: var(--mdv-space-3);
+  padding: var(--mdv-space-4) 0.875rem;
+  border-radius: var(--mdv-radius);
   border: 1px solid transparent;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
   font-weight: 500;
   line-height: 1.2;
   cursor: pointer;
   overflow-wrap: anywhere;
   transition:
-    background-color 120ms ease,
-    border-color 120ms ease;
+    background-color var(--mdv-dur) var(--mdv-ease),
+    border-color var(--mdv-dur) var(--mdv-ease);
 }
 
 .btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: 2px;
 }
 
 .btn:disabled {
   cursor: default;
-  opacity: 0.55;
+  opacity: var(--mdv-opacity-disabled);
 }
 
 .btn-quiet {
-  background: var(--card);
-  color: var(--fg);
-  border-color: var(--line-strong);
+  background: var(--mdv-card);
+  color: var(--mdv-fg);
+  border-color: var(--mdv-border-strong);
 }
 
 .btn-quiet:hover:not(:disabled) {
-  background: var(--surface);
+  background: var(--mdv-surface);
 }
 
 .btn-icon {
   flex: none;
-  padding: 5px 8px;
-  font-size: 12px;
-  background: var(--card);
-  color: var(--fg);
-  border-color: var(--line-strong);
+  padding: var(--mdv-space-3) var(--mdv-space-4);
+  font-size: var(--mdv-text-sm);
+  background: var(--mdv-card);
+  color: var(--mdv-fg);
+  border-color: var(--mdv-border-strong);
 }
 
 .btn-icon:hover:not(:disabled) {
-  background: var(--surface);
+  background: var(--mdv-surface);
 }
 
 .btn-inline {
   flex: none;
-  padding: 5px 12px;
-  font-size: 12px;
+  padding: var(--mdv-space-3) var(--mdv-space-5);
+  font-size: var(--mdv-text-sm);
 }
 
 .actions {
@@ -481,36 +492,36 @@ code {
   height: 27px;
   margin-top: 2px;
   padding: 0;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  background: var(--surface);
+  border: 1px solid var(--mdv-border-strong);
+  border-radius: var(--mdv-radius-full);
+  background: var(--mdv-surface);
   cursor: pointer;
   transition:
-    background-color 140ms ease,
-    border-color 140ms ease;
+    background-color var(--mdv-dur) var(--mdv-ease),
+    border-color var(--mdv-dur) var(--mdv-ease);
 }
 
 .switch[aria-checked='true'] {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--mdv-accent);
+  border-color: var(--mdv-accent);
 }
 
 .switch:hover:not(:disabled) {
-  border-color: var(--muted);
+  border-color: var(--mdv-fg-muted);
 }
 
 .switch[aria-checked='true']:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+  background: var(--mdv-accent-hover);
+  border-color: var(--mdv-accent-hover);
 }
 
 .switch:disabled {
   cursor: default;
-  opacity: 0.55;
+  opacity: var(--mdv-opacity-disabled);
 }
 
 .switch:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: 2px;
 }
 
@@ -521,9 +532,9 @@ code {
   width: 21px;
   height: 21px;
   border-radius: 50%;
-  background: var(--thumb);
+  background: var(--mdv-thumb);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.28);
-  transition: transform 140ms ease;
+  transition: transform var(--mdv-dur) var(--mdv-ease);
 }
 
 .switch[aria-checked='true'] .switch-thumb {
@@ -533,13 +544,13 @@ code {
 /* Stands in for the switch until the real permission state has been read. */
 .pill {
   flex: none;
-  margin-top: 4px;
+  margin-top: var(--mdv-space-2);
   padding: 4px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  font-size: 12px;
-  color: var(--muted);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-full);
+  background: var(--mdv-surface);
+  font-size: var(--mdv-text-sm);
+  color: var(--mdv-fg-muted);
 }
 
 /* Sites -------------------------------------------------------------------- */
@@ -548,8 +559,8 @@ code {
   margin: 14px 0 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-lg);
   overflow: hidden;
 }
 
@@ -557,18 +568,18 @@ code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--mdv-space-6);
   padding: 10px 14px;
-  background: var(--card);
+  background: var(--mdv-card);
 }
 
 .site + .site {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--mdv-border);
 }
 
 .site-name {
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
   font-weight: 500;
   overflow-wrap: anywhere;
 }
@@ -576,31 +587,31 @@ code {
 .empty {
   margin: 14px 0 0;
   padding: 16px 14px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 10px;
-  font-size: 13px;
+  border: 1px dashed var(--mdv-border-strong);
+  border-radius: var(--mdv-radius-lg);
+  font-size: var(--mdv-text-md);
   line-height: 1.6;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
   text-align: center;
 }
 
 .note {
   margin: 14px 0 0;
   padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-  font-size: 12.5px;
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius);
+  background: var(--mdv-surface);
+  font-size: var(--mdv-text-md);
   line-height: 1.55;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 /* file:// onboarding -------------------------------------------------------- */
 
 .steps {
-  margin: 12px 0 0;
+  margin: var(--mdv-space-5) 0 0;
   padding-left: 20px;
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
   line-height: 1.6;
 }
 
@@ -611,15 +622,15 @@ code {
 .path {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--mdv-space-4);
   max-width: 460px;
-  margin-top: 7px;
+  margin-top: var(--mdv-space-4);
 }
 
 .path code {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 6px 8px;
+  padding: var(--mdv-space-3) var(--mdv-space-4);
   overflow-wrap: anywhere;
 }
 
@@ -628,16 +639,16 @@ code {
 .facts {
   margin: 10px 0 0;
   padding-left: 20px;
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
   line-height: 1.7;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 /* Messages ----------------------------------------------------------------- */
 
 .msg {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -647,15 +658,15 @@ code {
 }
 
 .msg.is-ok {
-  color: var(--ok);
+  color: var(--mdv-ok);
 }
 
 .msg.is-error {
-  color: var(--err);
+  color: var(--mdv-err);
 }
 
 .msg.is-info {
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 /* Loading ------------------------------------------------------------------ */
@@ -663,15 +674,15 @@ code {
 .skeleton {
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  padding: 4px 0;
+  gap: var(--mdv-space-4);
+  padding: var(--mdv-space-2) 0;
 }
 
 .bar {
-  height: 11px;
-  border-radius: 6px;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  height: 0.625rem;
+  border-radius: var(--mdv-radius-sm);
+  background: var(--mdv-surface);
+  border: 1px solid var(--mdv-border);
 }
 
 .bar-a {
@@ -687,12 +698,12 @@ code {
 .segmented {
   display: flex;
   flex: none;
-  gap: 2px;
+  gap: var(--mdv-space-1);
   margin-top: 2px;
-  padding: 2px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
+  padding: var(--mdv-space-1);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius);
+  background: var(--mdv-surface);
 }
 
 .segment {
@@ -709,26 +720,26 @@ code {
 }
 
 .segment span {
-  padding: 5px 12px;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: var(--mdv-space-1) var(--mdv-space-3);
+  border-radius: var(--mdv-radius-sm);
+  font-size: var(--mdv-text-sm);
   line-height: 1.3;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 .segment:hover span {
-  color: var(--fg);
+  color: var(--mdv-fg);
 }
 
 .segment.is-on span {
-  background: var(--card);
-  color: var(--fg);
+  background: var(--mdv-card, var(--mdv-bg));
+  color: var(--mdv-fg);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  box-shadow: var(--mdv-shadow-1);
 }
 
 .segment input:focus-visible + span {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: 1px;
 }
 
@@ -737,7 +748,7 @@ code {
 .slider {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--mdv-space-5);
   flex: none;
   width: 220px;
   margin-top: 2px;
@@ -749,21 +760,21 @@ code {
   margin: 0;
   /* Native track and thumb, tinted. It follows color-scheme on its own, so
      both themes are handled without rebuilding the control by hand. */
-  accent-color: var(--accent);
+  accent-color: var(--mdv-accent);
   cursor: pointer;
 }
 
 .slider input[type='range']:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: 4px;
-  border-radius: 4px;
+  border-radius: var(--mdv-radius-sm);
 }
 
 .slider-value {
   flex: none;
   min-width: 4ch;
-  font-size: 13px;
-  color: var(--muted);
+  font-size: var(--mdv-text-md);
+  color: var(--mdv-fg-muted);
   text-align: right;
   /* The value changes continuously during a drag; proportional digits would
      make the whole label shuffle sideways as it counted. */
@@ -773,12 +784,12 @@ code {
 /* Preview ------------------------------------------------------------------ */
 
 .preview {
-  margin-top: 12px;
+  margin-top: var(--mdv-space-5);
   padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--fg);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-lg);
+  background: var(--mdv-surface);
+  color: var(--mdv-fg);
   overflow-wrap: break-word;
 
   /* The same four custom properties the viewer sets on a real document, read
@@ -812,7 +823,7 @@ code {
 
 .presets {
   display: grid;
-  gap: 8px;
+  gap: var(--mdv-space-4);
   margin-top: 14px;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
@@ -820,25 +831,25 @@ code {
 .preset {
   position: relative;
   display: block;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--card);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-lg);
+  background: var(--mdv-card);
   cursor: pointer;
   transition:
-    border-color 120ms ease,
-    background-color 120ms ease;
+    border-color var(--mdv-dur) var(--mdv-ease),
+    background-color var(--mdv-dur) var(--mdv-ease);
 }
 
 .preset:hover {
-  border-color: var(--line-strong);
-  background: var(--surface);
+  border-color: var(--mdv-border-strong);
+  background: var(--mdv-surface);
 }
 
 .preset.is-on {
-  border-color: var(--accent);
+  border-color: var(--mdv-accent);
   /* A second ring rather than a thicker border: a border that changes width
      would shift every card in the grid by a pixel as the choice moves. */
-  box-shadow: inset 0 0 0 1px var(--accent);
+  box-shadow: inset 0 0 0 1px var(--mdv-accent);
 }
 
 .preset input {
@@ -850,9 +861,9 @@ code {
 }
 
 .preset input:focus-visible ~ .preset-body {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: -3px;
-  border-radius: 8px;
+  border-radius: var(--mdv-radius);
 }
 
 .preset-body {
@@ -866,8 +877,8 @@ code {
 .preset-swatch {
   display: flex;
   flex: none;
-  border: 1px solid var(--line-strong);
-  border-radius: 6px;
+  border: 1px solid var(--mdv-border-strong);
+  border-radius: var(--mdv-radius-sm);
   overflow: hidden;
 }
 
@@ -883,21 +894,21 @@ code {
 
 .preset-name {
   display: block;
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
   font-weight: 600;
 }
 
 .preset.is-on .preset-name::after {
   content: ' ✓';
-  color: var(--accent);
+  color: var(--mdv-accent);
 }
 
 .preset-note {
   display: block;
-  margin-top: 2px;
-  font-size: 12px;
+  margin-top: var(--mdv-space-1);
+  font-size: var(--mdv-text-sm);
   line-height: 1.45;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 /* Palette preview ---------------------------------------------------------- */
@@ -907,11 +918,11 @@ code {
 .palette {
   margin-top: 12px;
   padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-lg);
   background: var(--mdv-bg);
   color: var(--mdv-fg);
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
   line-height: 1.6;
   overflow: hidden;
 }
@@ -939,7 +950,7 @@ code {
 .palette-code {
   padding: 0.15em 0.4em;
   border: 1px solid var(--mdv-border);
-  border-radius: 4px;
+  border-radius: var(--mdv-radius-sm);
   background: var(--mdv-surface);
   color: var(--mdv-fg);
 }
@@ -948,11 +959,11 @@ code {
   margin: 0;
   padding: 10px 12px;
   border: 1px solid var(--mdv-border);
-  border-radius: 8px;
+  border-radius: var(--mdv-radius);
   background: var(--mdv-surface);
   color: var(--mdv-fg);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
+  font-size: var(--mdv-text-sm);
   line-height: 1.55;
   overflow-x: auto;
 }
@@ -984,12 +995,12 @@ code {
   width: 100%;
   margin-top: 12px;
   padding: 12px 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--fg);
+  border: 1px solid var(--mdv-border-strong);
+  border-radius: var(--mdv-radius-lg);
+  background: var(--mdv-surface);
+  color: var(--mdv-fg);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12.5px;
+  font-size: var(--mdv-text-md);
   line-height: 1.6;
   /* Vertical only: a horizontally resizable editor can be dragged wider than
      its card and out from under the layout. */
@@ -998,7 +1009,7 @@ code {
 }
 
 .editor:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: 1px;
 }
 
@@ -1009,16 +1020,16 @@ code {
   width: 100%;
   margin-top: 12px;
   padding: 9px 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--fg);
+  border: 1px solid var(--mdv-border-strong);
+  border-radius: var(--mdv-radius-lg);
+  background: var(--mdv-surface);
+  color: var(--mdv-fg);
   font: inherit;
-  font-size: 13.5px;
+  font-size: var(--mdv-text-md);
 }
 
 .field:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: 1px;
 }
 
@@ -1026,23 +1037,23 @@ code {
 .select {
   flex: none;
   padding: 7px 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: 9px;
-  background: var(--surface);
-  color: var(--fg);
+  border: 1px solid var(--mdv-border-strong);
+  border-radius: var(--mdv-radius);
+  background: var(--mdv-surface);
+  color: var(--mdv-fg);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
 }
 
 .select:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: 1px;
 }
 
 .editor-count {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: var(--muted);
+  margin: var(--mdv-space-4) 0 0;
+  font-size: var(--mdv-text-sm);
+  color: var(--mdv-fg-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1052,11 +1063,11 @@ code {
   flex: none;
   margin-left: auto;
   padding: 3px 9px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  font-size: 12px;
-  color: var(--muted);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-full);
+  background: var(--mdv-surface);
+  font-size: var(--mdv-text-sm);
+  color: var(--mdv-fg-muted);
   white-space: nowrap;
 }
 
@@ -1067,48 +1078,48 @@ code {
   max-width: 100%;
   margin-top: 12px;
   font: inherit;
-  font-size: 13px;
-  color: var(--muted);
+  font-size: var(--mdv-text-md);
+  color: var(--mdv-fg-muted);
 }
 
 .file::file-selector-button {
   margin-right: 10px;
   padding: 8px 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--fg);
+  border: 1px solid var(--mdv-border-strong);
+  border-radius: var(--mdv-radius);
+  background: var(--mdv-card);
+  color: var(--mdv-fg);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
   font-weight: 500;
   cursor: pointer;
 }
 
 .file:hover::file-selector-button {
-  background: var(--surface);
+  background: var(--mdv-surface);
 }
 
 .file:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: 2px;
-  border-radius: 8px;
+  border-radius: var(--mdv-radius);
 }
 
 .file:disabled {
   cursor: default;
-  opacity: 0.55;
+  opacity: var(--mdv-opacity-disabled);
 }
 
 /* What an import did, beyond succeeding. */
 .notes {
-  margin: 12px 0 0;
+  margin: var(--mdv-space-5) 0 0;
   padding: 12px 14px 12px 32px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
-  font-size: 12.5px;
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-lg);
+  background: var(--mdv-surface);
+  font-size: var(--mdv-text-md);
   line-height: 1.6;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 .notes li + li {
@@ -1136,7 +1147,7 @@ code {
      first setting a screen and a half down the page. */
   .toc-list {
     columns: 2;
-    column-gap: 16px;
+    column-gap: var(--mdv-space-6);
   }
 
   .toc-list li {
@@ -1170,7 +1181,7 @@ code {
   /* The pill needs a line of its own before the name is squeezed to nothing. */
   .site:has(.pin-what) {
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--mdv-space-4);
   }
 
   .pin-what {

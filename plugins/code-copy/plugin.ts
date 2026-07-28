@@ -22,21 +22,11 @@ import { PLUGIN_API_VERSION, type Plugin, type Teardown } from '../../lib/plugin
 
 import { createClipboard } from '../../lib/clipboard.ts';
 
+/* Icons come from the one module that holds them — inline SVG still, because
+   the extension never loads a resource of any kind, but built once (D9). */
+import { ICON_CHECK, ICON_COPY, ICON_FAIL } from '../../design/icons.ts';
+
 export const CODE_COPY_PLUGIN_ID = 'code-copy';
-
-/* -------------------------------------------------------------------------- */
-/* Icons — inline, because the extension never loads a resource of any kind.    */
-/* -------------------------------------------------------------------------- */
-
-const ICON = [
-  '<svg class="mdv-icon" viewBox="0 0 16 16" width="13" height="13" fill="none"',
-  'stroke="currentColor" stroke-width="1.6" stroke-linecap="round"',
-  'stroke-linejoin="round" aria-hidden="true" focusable="false">',
-].join(' ');
-
-const ICON_COPY = `${ICON}<rect x="5.2" y="5.2" width="8.8" height="8.8" rx="1.4"/><path d="M10.8 5V3.4A1.4 1.4 0 0 0 9.4 2H3.4A1.4 1.4 0 0 0 2 3.4v6a1.4 1.4 0 0 0 1.4 1.4H5"/></svg>`;
-const ICON_CHECK = `${ICON}<path d="m3 8.4 3.2 3.3L13 4.6"/></svg>`;
-const ICON_FAIL = `${ICON}<circle cx="8" cy="8" r="6.1"/><path d="M8 4.9v3.6M8 10.8v.1"/></svg>`;
 
 /**
  * Built once and cloned per block. Parsing the same markup string for every

@@ -29,6 +29,10 @@
 
 import { PLUGIN_API_VERSION, type Plugin, type Teardown } from '../../lib/plugins/types.ts';
 
+/* The three indicator glyphs, from the shared module (D9): stroke 1.6 like
+   every other icon, and 13px — the smallest size on the scale. */
+import { ICON_SORT_ASC, ICON_SORT_DESC, ICON_SORT_NONE } from '../../design/icons.ts';
+
 export const SORTABLE_TABLES_PLUGIN_ID = 'sortable-tables';
 
 /** The control, and the marker its stylesheet draws the indicator from. */
@@ -47,17 +51,6 @@ export type ColumnType = 'number' | 'date' | 'string';
  * unsortable one that looks sortable.
  */
 const MIN_ROWS = 2;
-
-const ICON = [
-  `<svg class="${CONTROL}-icon" viewBox="0 0 16 16" width="11" height="11"`,
-  'fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"',
-  'stroke-linejoin="round" aria-hidden="true" focusable="false">',
-].join(' ');
-
-/** One glyph per state; the stylesheet shows exactly the one that applies. */
-const ICON_NONE = `${ICON}<path class="${CONTROL}-up" d="M8 10.5 4.5 6.5h7z"/></svg>`;
-const ICON_ASC = `${ICON}<path d="M8 12.5V4M4.5 7.5 8 4l3.5 3.5"/></svg>`;
-const ICON_DESC = `${ICON}<path d="M8 3.5V12M4.5 8.5 8 12l3.5-3.5"/></svg>`;
 
 /* -------------------------------------------------------------------------- */
 /* Value parsing                                                               */
@@ -480,9 +473,9 @@ function control(header: HTMLTableCellElement): HTMLButtonElement {
   const label = header.textContent?.trim();
   button.setAttribute('aria-label', label ? `Sort by ${label}` : 'Sort column');
   button.innerHTML =
-    `<span class="${CONTROL}-face ${CONTROL}-face-none">${ICON_NONE}</span>` +
-    `<span class="${CONTROL}-face ${CONTROL}-face-asc">${ICON_ASC}</span>` +
-    `<span class="${CONTROL}-face ${CONTROL}-face-desc">${ICON_DESC}</span>`;
+    `<span class="${CONTROL}-face ${CONTROL}-face-none">${ICON_SORT_NONE}</span>` +
+    `<span class="${CONTROL}-face ${CONTROL}-face-asc">${ICON_SORT_ASC}</span>` +
+    `<span class="${CONTROL}-face ${CONTROL}-face-desc">${ICON_SORT_DESC}</span>`;
 
   return button;
 }

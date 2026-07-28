@@ -2,7 +2,11 @@
  * Page shell only — colours live in App.css so the explicit Theme setting and
  * prefers-color-scheme are handled in one place. System fonts only: a webfont
  * would be a network request, and this extension makes none.
+ *
+ * The design system's value scales — spacing, type, radius, motion, elevation.
+ * Vite inlines it at build time, so no @import survives into the output.
  */
+@import '../../design/tokens.css';
 
 *,
 *::before,

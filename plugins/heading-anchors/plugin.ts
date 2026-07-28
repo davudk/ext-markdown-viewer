@@ -19,20 +19,13 @@ import { PLUGIN_API_VERSION, type Plugin, type Teardown } from '../../lib/plugin
 
 import { createClipboard } from '../../lib/clipboard.ts';
 
+/* One module owns the glyphs and their size; see D9. */
+import { ICON_CHECK, ICON_FAIL, ICON_LINK } from '../../design/icons.ts';
+
 export const HEADING_ANCHORS_PLUGIN_ID = 'heading-anchors';
 
 /** The headings that get one. h5 and h6 are section labels, not destinations. */
 const HEADINGS = 'h1[id], h2[id], h3[id], h4[id]';
-
-const ICON = [
-  '<svg class="mdv-icon" viewBox="0 0 16 16" width="13" height="13" fill="none"',
-  'stroke="currentColor" stroke-width="1.6" stroke-linecap="round"',
-  'stroke-linejoin="round" aria-hidden="true" focusable="false">',
-].join(' ');
-
-const ICON_CHECK = `${ICON}<path d="m3 8.4 3.2 3.3L13 4.6"/></svg>`;
-const ICON_FAIL = `${ICON}<circle cx="8" cy="8" r="6.1"/><path d="M8 4.9v3.6M8 10.8v.1"/></svg>`;
-const ICON_LINK = `${ICON}<path d="M6.6 9.4a2.9 2.9 0 0 0 4.1 0l2.1-2.1a2.9 2.9 0 0 0-4.1-4.1l-1 1"/><path d="M9.4 6.6a2.9 2.9 0 0 0-4.1 0L3.2 8.7a2.9 2.9 0 0 0 4.1 4.1l1-1"/></svg>`;
 
 /** Built once and cloned per heading, for the reason `code-copy` gives. */
 let template: HTMLAnchorElement | null = null;

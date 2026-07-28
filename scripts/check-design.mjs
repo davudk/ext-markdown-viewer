@@ -82,6 +82,125 @@ for (const file of files) {
   });
 }
 
+/* --------------------------------------------------------------------------
+ * Colour agreement (decisions D4 and D14).
+ *
+ * The palette exists in three places that must agree by construction and have
+ * only ever agreed by diligence: the `default` preset in lib/theme-presets.ts
+ * (the typed source — it is what the contrast tests validate), the baseline
+ * blocks in entrypoints/viewer.css, and the hand-mirrored EXPORT_CSS in
+ * lib/export.ts. Plus the print palette, which lives in the two stylesheets
+ * only. This is the "soft-first" half of D4: assert agreement now; generate
+ * from the source only if this check ever becomes busywork.
+ * ------------------------------------------------------------------------ */
+
+/** `--mdv-token: value;` pairs from the first CSS block opened by `selector`.
+ *  Matching ignores whitespace differences — the two stylesheets indent their
+ *  print selectors differently, and formatting is not an agreement failure. */
+function cssTokens(text, selector, label) {
+  const collapse = (s) => s.replace(/\s+/g, ' ');
+  const needle = collapse(selector);
+  let start = -1;
+  for (let i = text.indexOf(':root'); i !== -1; i = text.indexOf(':root', i + 1)) {
+    if (collapse(text.slice(i, i + selector.length * 2)).startsWith(needle)) {
+      start = i;
+      break;
+    }
+  }
+  if (start === -1) {
+    failures.push(`${label}: block not found — "${needle}"`);
+    return null;
+  }
+  const open = text.indexOf('{', start);
+  const close = text.indexOf('}', open);
+  const tokens = {};
+  for (const [, name, value] of text
+    .slice(open, close)
+    .matchAll(/--mdv-([a-z-]+):\s*([^;]+);/g)) {
+    tokens[name] = value.trim();
+  }
+  return tokens;
+}
+
+/** The default preset's palette for one polarity, parsed out of the TS source. */
+function presetTokens(text, polarity) {
+  const preset = text.slice(text.indexOf("id: 'default'"));
+  const start = preset.indexOf(`${polarity}: {`);
+  const close = preset.indexOf('}', start);
+  const tokens = {};
+  for (const [, name, value] of preset
+    .slice(start, close)
+    .matchAll(/'?([a-z-]+)'?:\s*'([^']+)'/g)) {
+    tokens[name] = value.trim();
+  }
+  delete tokens[polarity];
+  return tokens;
+}
+
+/**
+ * Tokens a copy may legitimately omit because it has no rule that reads them:
+ * the export styles no scrollbars, so carrying the token would be a value with
+ * no consumer. An omission is fine; a *different* value never is.
+ */
+const OMITTABLE = new Set(['scrollbar']);
+
+function compareTokens(reference, refLabel, candidate, candidateLabel) {
+  if (!reference || !candidate) return;
+  for (const [name, value] of Object.entries(reference)) {
+    if (name === 'color-scheme') continue;
+    if (!(name in candidate) && OMITTABLE.has(name)) continue;
+    if (!(name in candidate)) {
+      failures.push(`${candidateLabel}: missing --mdv-${name} (defined in ${refLabel})`);
+    } else if (candidate[name] !== value) {
+      failures.push(
+        `${candidateLabel}: --mdv-${name} is ${candidate[name]}, but ${refLabel} says ${value}`,
+      );
+    }
+  }
+  for (const name of Object.keys(candidate)) {
+    if (!(name in reference)) {
+      failures.push(`${candidateLabel}: --mdv-${name} has no counterpart in ${refLabel}`);
+    }
+  }
+}
+
+const viewerCss = readFileSync('entrypoints/viewer.css', 'utf8');
+const exportTs = readFileSync('lib/export.ts', 'utf8');
+const presetsTs = readFileSync('lib/theme-presets.ts', 'utf8');
+
+for (const polarity of ['light', 'dark']) {
+  const source = presetTokens(presetsTs, polarity);
+  const selector = `:root[data-mdv-theme='${polarity}']`;
+  compareTokens(
+    source,
+    `theme-presets default ${polarity}`,
+    cssTokens(viewerCss, selector, `viewer.css ${polarity}`),
+    `viewer.css ${polarity}`,
+  );
+  compareTokens(
+    source,
+    `theme-presets default ${polarity}`,
+    cssTokens(exportTs, selector, `EXPORT_CSS ${polarity}`),
+    `EXPORT_CSS ${polarity}`,
+  );
+}
+
+// Print exists only in the two stylesheets; viewer.css is the reference. The
+// print block deliberately overrides a subset (selection and scrollbar keep
+// their screen values), so the comparison is between the two overrides, not
+// against the full screen palette.
+const printSelector = ":root[data-mdv-theme='light'],\n:root[data-mdv-theme='dark']";
+const viewerPrint =
+  cssTokens(viewerCss.slice(viewerCss.indexOf('@media print')), printSelector, 'viewer.css print') ??
+  undefined;
+const exportPrint =
+  cssTokens(
+    exportTs.slice(exportTs.indexOf('@media print')),
+    ":root[data-mdv-theme='light'], :root[data-mdv-theme='dark']",
+    'EXPORT_CSS print',
+  ) ?? undefined;
+compareTokens(viewerPrint, 'viewer.css print', exportPrint, 'EXPORT_CSS print');
+
 if (failures.length > 0) {
   console.error(`✖ ${failures.length} design-token violation(s):\n`);
   for (const failure of failures) console.error(`  ${failure}`);

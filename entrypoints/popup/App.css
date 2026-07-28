@@ -7,59 +7,73 @@
 :root {
   color-scheme: light;
 
-  --bg: #ffffff;
-  --surface: #f6f7f9;
-  --fg: #16191d;
-  --muted: #5c636e;
-  --line: #e3e6ea;
-  --line-strong: #cfd4db;
-  --accent: #2f6df6;
-  --accent-hover: #2258d8;
-  --accent-fg: #ffffff;
-  --ok: #10693c;
-  --err: #a5261f;
-  --code-bg: #eef0f3;
+  --mdv-bg: #ffffff;
+  --mdv-surface: #f6f8fa;
+  --mdv-fg: #1f2328;
+  --mdv-fg-muted: #5a636d;
+  --mdv-border: #d5dbe1;
+  --mdv-border-strong: #b6bfc9;
+  --mdv-accent: #0a53be;
+  --mdv-accent-hover: #08409a;
+  --mdv-on-accent: #ffffff;
+  --mdv-ok: #10693c;
+  --mdv-err: #a5261f;
+  --mdv-code-bg: #eef0f3;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
 
-    --bg: #16181c;
-    --surface: #1e2126;
-    --fg: #e8eaed;
-    --muted: #a2a9b4;
-    --line: #2b2f36;
-    --line-strong: #3a4048;
-    --accent: #5b8dff;
-    --accent-hover: #7aa2ff;
-    --accent-fg: #0e1116;
-    --ok: #63d296;
-    --err: #ff8f85;
-    --code-bg: #23272d;
+    --mdv-bg: #0d1117;
+    --mdv-surface: #161b22;
+    --mdv-fg: #e6edf3;
+    --mdv-fg-muted: #9aa4af;
+    --mdv-border: #30363d;
+    --mdv-border-strong: #4a525c;
+    --mdv-accent: #6cb1ff;
+    --mdv-accent-hover: #8cc4ff;
+    --mdv-on-accent: #0d1117;
+    --mdv-ok: #63d296;
+    --mdv-err: #ff8f85;
+    --mdv-code-bg: #23272d;
+
+    /* tokens.css keys its per-polarity elevation on `data-mdv-theme`, which this
+       page does not set; restate the dark values here. */
+    --mdv-shadow-1: 0 1px 2px rgb(0 0 0 / 0.35);
+    --mdv-shadow-2: 0 6px 24px -8px rgb(0 0 0 / 0.55);
+    --mdv-shadow-3: 0 18px 48px -12px rgb(0 0 0 / 0.65);
+    --mdv-scrim: rgb(0 0 0 / 0.45);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --bg: #16181c;
-  --surface: #1e2126;
-  --fg: #e8eaed;
-  --muted: #a2a9b4;
-  --line: #2b2f36;
-  --line-strong: #3a4048;
-  --accent: #5b8dff;
-  --accent-hover: #7aa2ff;
-  --accent-fg: #0e1116;
-  --ok: #63d296;
-  --err: #ff8f85;
-  --code-bg: #23272d;
+  --mdv-bg: #0d1117;
+  --mdv-surface: #161b22;
+  --mdv-fg: #e6edf3;
+  --mdv-fg-muted: #9aa4af;
+  --mdv-border: #30363d;
+  --mdv-border-strong: #4a525c;
+  --mdv-accent: #6cb1ff;
+  --mdv-accent-hover: #8cc4ff;
+  --mdv-on-accent: #0d1117;
+  --mdv-ok: #63d296;
+  --mdv-err: #ff8f85;
+  --mdv-code-bg: #23272d;
+
+  /* tokens.css keys its per-polarity elevation on `data-mdv-theme`, which this
+     page does not set; restate the dark values here. */
+  --mdv-shadow-1: 0 1px 2px rgb(0 0 0 / 0.35);
+  --mdv-shadow-2: 0 6px 24px -8px rgb(0 0 0 / 0.55);
+  --mdv-shadow-3: 0 18px 48px -12px rgb(0 0 0 / 0.65);
+  --mdv-scrim: rgb(0 0 0 / 0.45);
 }
 
 .popup {
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--mdv-bg);
+  color: var(--mdv-fg);
 }
 
 /* Header ------------------------------------------------------------------ */
@@ -67,16 +81,16 @@
 .head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--mdv-space-4);
   padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--mdv-border);
 }
 
 .head h1 {
   /* Takes the slack so the settings button sits flush against the right edge. */
   flex: 1 1 auto;
   margin: 0;
-  font-size: 14px;
+  font-size: var(--mdv-text-lg);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -85,7 +99,7 @@
   width: 20px;
   height: 20px;
   flex: none;
-  color: var(--accent);
+  color: var(--mdv-accent);
 }
 
 .icon {
@@ -102,16 +116,16 @@
 }
 
 .lede {
-  margin: 0 0 12px;
-  font-size: 13px;
+  margin: 0 0 var(--mdv-space-5);
+  font-size: var(--mdv-text-md);
   line-height: 1.5;
 }
 
 .sub {
-  margin: 0 0 4px;
-  font-size: 12px;
+  margin: 0 0 var(--mdv-space-2);
+  font-size: var(--mdv-text-sm);
   line-height: 1.5;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 .filename {
@@ -127,8 +141,8 @@
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.92em;
-  background: var(--code-bg);
-  border-radius: 4px;
+  background: var(--mdv-code-bg);
+  border-radius: var(--mdv-radius-sm);
   padding: 1px 4px;
 }
 
@@ -138,66 +152,66 @@ code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--mdv-space-3);
   width: 100%;
-  padding: 9px 12px;
-  border-radius: 8px;
+  padding: var(--mdv-space-4) 0.875rem;
+  border-radius: var(--mdv-radius);
   border: 1px solid transparent;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--mdv-text-md);
   font-weight: 500;
   line-height: 1.2;
   text-align: center;
   cursor: pointer;
   overflow-wrap: anywhere;
   transition:
-    background-color 120ms ease,
-    border-color 120ms ease;
+    background-color var(--mdv-dur) var(--mdv-ease),
+    border-color var(--mdv-dur) var(--mdv-ease);
 }
 
 .btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: 2px;
 }
 
 .btn:disabled {
   cursor: default;
-  opacity: 0.55;
+  opacity: var(--mdv-opacity-disabled);
 }
 
 .btn-primary {
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--mdv-accent);
+  color: var(--mdv-on-accent);
   font-weight: 600;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--mdv-accent-hover);
 }
 
 .btn-quiet {
-  background: var(--bg);
-  color: var(--fg);
-  border-color: var(--line-strong);
+  background: var(--mdv-bg);
+  color: var(--mdv-fg);
+  border-color: var(--mdv-border-strong);
 }
 
 .btn-quiet:hover:not(:disabled) {
-  background: var(--surface);
+  background: var(--mdv-surface);
 }
 
 /* Header affordance: present in every state, loud in none of them. */
 .btn-ghost {
   width: auto;
   flex: none;
-  padding: 5px;
-  border-radius: 6px;
+  padding: var(--mdv-space-3);
+  border-radius: var(--mdv-radius-sm);
   background: transparent;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 .btn-ghost:hover:not(:disabled) {
-  background: var(--surface);
-  color: var(--fg);
+  background: var(--mdv-surface);
+  color: var(--mdv-fg);
 }
 
 /* An inline text button, for prose that leads somewhere. */
@@ -206,48 +220,48 @@ code {
   border: 0;
   background: none;
   font: inherit;
-  color: var(--accent);
+  color: var(--mdv-accent);
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
 }
 
 .link:hover {
-  color: var(--accent-hover);
+  color: var(--mdv-accent-hover);
 }
 
 .link:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: var(--mdv-radius-sm);
 }
 
 /* Stacked full-width buttons. */
 .actions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--mdv-space-4);
 }
 
 /* Permission tiers --------------------------------------------------------- */
 
 .tier-note {
-  margin: 8px 0 0;
-  font-size: 12px;
+  margin: var(--mdv-space-4) 0 0;
+  font-size: var(--mdv-text-sm);
   line-height: 1.45;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 .tier {
   margin-top: 14px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface);
+  padding: var(--mdv-space-5);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius-lg);
+  background: var(--mdv-surface);
 }
 
 .tier .tier-note {
-  margin-top: 4px;
+  margin-top: var(--mdv-space-2);
   margin-bottom: 10px;
 }
 
@@ -255,14 +269,14 @@ code {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--mdv-space-2);
   margin: 0;
-  font-size: 12px;
-  color: var(--muted);
+  font-size: var(--mdv-text-sm);
+  color: var(--mdv-fg-muted);
 }
 
 .tier-title .icon {
-  color: var(--ok);
+  color: var(--mdv-ok);
   align-self: center;
 }
 
@@ -271,16 +285,16 @@ code {
 .state-ok {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--mdv-space-3);
   font-weight: 600;
 }
 
 .state-ok .icon {
-  color: var(--ok);
+  color: var(--mdv-ok);
 }
 
 .sub-link {
-  margin-top: 12px;
+  margin-top: var(--mdv-space-5);
 }
 
 /* Notice ------------------------------------------------------------------- */
@@ -288,17 +302,17 @@ code {
 .notice {
   margin: 10px 0 0;
   min-height: 16px;
-  font-size: 12px;
+  font-size: var(--mdv-text-sm);
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
 .notice.is-ok {
-  color: var(--ok);
+  color: var(--mdv-ok);
 }
 
 .notice.is-error {
-  color: var(--err);
+  color: var(--mdv-err);
 }
 
 /* Loading ------------------------------------------------------------------ */
@@ -306,23 +320,23 @@ code {
 .skeleton {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 4px 0 8px;
+  gap: var(--mdv-space-4);
+  padding: var(--mdv-space-2) 0 var(--mdv-space-4);
 }
 
 .bar {
-  height: 10px;
-  border-radius: 5px;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  height: 0.625rem;
+  border-radius: var(--mdv-radius-sm);
+  background: var(--mdv-surface);
+  border: 1px solid var(--mdv-border);
 }
 
 .bar-a {
-  width: 70%;
+  width: 62%;
 }
 
 .bar-b {
-  width: 45%;
+  width: 38%;
 }
 
 /* Theme picker ------------------------------------------------------------- */
@@ -332,29 +346,29 @@ code {
   align-items: center;
   justify-content: space-between;
   padding: 10px 16px 12px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--mdv-border);
 }
 
 .themes {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--mdv-space-5);
   width: 100%;
 }
 
 .themes-label {
-  font-size: 12px;
-  color: var(--muted);
+  font-size: var(--mdv-text-sm);
+  color: var(--mdv-fg-muted);
 }
 
 .segmented {
   display: flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
+  gap: var(--mdv-space-1);
+  padding: var(--mdv-space-1);
+  border: 1px solid var(--mdv-border);
+  border-radius: var(--mdv-radius);
+  background: var(--mdv-surface);
 }
 
 .segment {
@@ -371,26 +385,26 @@ code {
 }
 
 .segment span {
-  padding: 4px 9px;
-  border-radius: 6px;
-  font-size: 12px;
+  padding: var(--mdv-space-1) var(--mdv-space-3);
+  border-radius: var(--mdv-radius-sm);
+  font-size: var(--mdv-text-sm);
   line-height: 1.3;
-  color: var(--muted);
+  color: var(--mdv-fg-muted);
 }
 
 .segment:hover span {
-  color: var(--fg);
+  color: var(--mdv-fg);
 }
 
 .segment.is-on span {
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--mdv-card, var(--mdv-bg));
+  color: var(--mdv-fg);
   font-weight: 600;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  box-shadow: var(--mdv-shadow-1);
 }
 
 .segment input:focus-visible + span {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--mdv-accent);
   outline-offset: 1px;
 }
 
